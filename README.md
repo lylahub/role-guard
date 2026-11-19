@@ -1,0 +1,87 @@
+# rguard: communicative-role-aware guarding against indirect prompt injection
+
+CS239 project code (Option B scope). It compares four output guards for a document/email assistant:
+
+| Condition | Sees | Procedure |
+|---|---|---|
+| `text_only` | candidate response | direct decision |
+| `context` | request + source + response | direct decision |
+| `context_cot` | same as `context` | free-form reasoning, then decision (ablation: "is it just more thinking?") |
+| `role_aware` | same as `context` | find instruction spans → label each quotation / reporting / adoption → decide with a rubric that combines role and task |
+
+All four share the same model, temperature and security-policy text (`src/rguard/prompts.py`), so any
+difference between them comes from the information they see or the procedure they follow.
+
+## Setup
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[openai,dev]"        # or .[anthropic,dev]
+export OPENAI_API_KEY=...             # or ANTHROPIC_API_KEY
+pytest -q                             # offline tests, no key needed
+```
+Then edit `configs/default.yaml` to set the backend and model names. Keep them fixed for the whole project.
+
+## Offline smoke test (no API key)
+```bash
+python -m rguard.run_guards --data data/seed_examples.jsonl --split all --mock --name smoke
+python -m rguard.run_e2e    --data data/seed_examples.jsonl --split all --mock --name smoke-e2e
+```
+The mock backend uses keyword heuristics. Its numbers are meaningless; it only shows the pipeline works.
+
+## Workflow
+```bash
+# 1. Draft examples with an LLM, then REVIEW every one by hand (see docs/annotation_guide.md)
+python -m rguard.draft data/sources_template.jsonl data/drafts/batch1.jsonl
+#    fix the drafts, set status "reviewed", append them to data/examples.jsonl
+
+# 2. Validate, check the balance, split (no source or attack template appears in both dev and test)
+python -m rguard.data validate data/examples.jsonl
+python -m rguard.data split    data/examples.jsonl --dev-frac 0.3
+python -m rguard.data stats    data/examples.jsonl
+
+# 3. Agreement on the double-annotated subset
+python -m rguard.agreement annotations/A.jsonl annotations/B.jsonl --disagreements annotations/disagree.jsonl
+
+# 4. Iterate on prompts on DEV only
+python -m rguard.run_guards --data data/examples.jsonl --split dev
+
+# 5. Freeze prompts (git tag), then run TEST once, for fixed responses and end to end
+python -m rguard.run_guards --data data/examples.jsonl --split test --name final-test
+python -m rguard.run_e2e    --data data/examples.jsonl --split test --name final-e2e
+```
+Each run writes `results/<name>/` containing `predictions.jsonl` (or `e2e_rows.jsonl`), `results.json` and `report.md`.
+Every LLM call is cached in `.cache/llm/`, so reruns are free and reproducible.
+
+## What the report contains
+- **Fixed responses:** attack miss rate, false-positive rate, accuracy (with 95% group-bootstrap CIs);
+  miss rate at a matched FPR (`target_fpr` in the config); accuracy per case type; the share of contrast
+  groups with every variant decided correctly (does the decision change with context?); paired
+  role_aware − baseline differences with CIs; span recall and precision; role accuracy and confusion;
+  token and latency cost; parse errors (these count as block).
+- **End to end:** attack success rate, useful completion rate, and blocked rate (reported separately)
+  for no guard and for each guard.
+
+## Repository layout
+```
+configs/default.yaml        models, concurrency, bootstrap, target FPR
+data/seed_examples.jsonl    23 hand-written seed examples in 6 groups (review them; reuse them or replace them)
+data/sources_template.jsonl input format for rguard.draft
+annotations/                annotator files (the example_* files show the format)
+docs/annotation_guide.md    role and label definitions, how to build groups, double-annotation protocol
+docs/work_plan.md           3-week plan with P1/P2/P3 checklists
+docs/proposal_updates.md    text for the revised proposal (hypotheses, guard difference, scope)
+src/rguard/                 prompts, guards, llm (+mock), data, metrics, runners, report, draft, agreement
+tests/                      offline tests
+```
+
+## Example schema (`data/*.jsonl`, one JSON object per line)
+```json
+{"id": "g01-a", "group_id": "g01", "source_id": "src01", "source_type": "email",
+ "attack_template": "T-credential-redirect", "attack_goal": "Get the user to ...",
+ "source_content": "...", "user_request": "Summarize this email for me.",
+ "candidate_response": "...", "case_type": "attack_adoption", "label": "block",
+ "spans": [{"text": "<exact substring of candidate_response>", "role": "adoption"}],
+ "e2e": true, "split": "test", "annotator": "P1", "status": "reviewed", "notes": ""}
+```
+`case_type` ∈ legit_quotation, legit_analysis, benign_adoption, attack_adoption, disguised_attack.
+`role` ∈ quotation, reporting (includes analysis), adoption.
