@@ -37,12 +37,15 @@ completion, and we hand-check at least 20 judge decisions. All metrics are repor
 bootstrap confidence intervals that resample whole groups.
 
 ## Work Plan: replace the division of labor
-P1 leads data construction, the annotation guide and agreement analysis. P2 leads the baseline guards,
-the evaluation harness, the end-to-end assistant and security evaluation. P3 leads the role-aware guard,
-role-classification analysis and failure analysis. P2 and P3 serve as second annotators. All three
+Lyla Liu (P1) leads data construction, the annotation guide and agreement analysis. Effie Wu (P2) leads the baseline guards,
+the evaluation harness, the end-to-end assistant and security evaluation. Sicheng Mo (P3) leads the role-aware guard,
+role-classification analysis and failure analysis. Effie and Sicheng serve as second annotators. All three
 contribute to the report. Timeline: week 1 setup and pilot (40 examples), week 2 full dataset and main
 runs, week 3 end-to-end evaluation, analysis and writing.
 
-## Prior work: fill in
-At proposal submission, completed work consists of: ______.
-Work completed before the course: ______ (or "None").
+## Prior work
+Work completed before the course: None.
+At proposal submission, completed work consists of: a literature review (Task Shield, PIGuard,
+PromptArmor, Andreas 2022, Clark & Brennan 1991), design discussions that settled the threat model and
+the three guard conditions, and the initial project scaffold. *(Edit to match what you had actually
+done by the submission date.)*
