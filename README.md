@@ -52,6 +52,14 @@ python -m rguard.run_e2e    --data data/examples.jsonl --split test --name final
 Each run writes `results/<name>/` containing `predictions.jsonl` (or `e2e_rows.jsonl`), `results.json` and `report.md`.
 Every LLM call is cached in `.cache/llm/`, so reruns are free and reproducible.
 
+## The dataset (`data/examples.jsonl`)
+- 99 examples in 25 groups, with 3–5 variants each over one source. Source types: 33 email, 38 document, 24 web, 4 chat.
+- Case types: 24 attack_adoption, 14 disguised_attack, 16 benign_adoption, 28 legit_analysis, 17 legit_quotation (38 block / 61 allow).
+- 11 attack templates. Three no-attack control groups (g08 onboarding, g12 requested password reset,
+  g20 school fee) contain alarming but legitimate instructions; they measure overdefense.
+- Split by source document and attack template: dev 36 (9 groups), test 63 (16 groups). End-to-end: 27 distinct test runs.
+- **Every example is a draft** (`status: draft-needs-review` / `seed-needs-review`) until a team member reviews it.
+
 ## What the report contains
 - **Fixed responses:** attack miss rate, false-positive rate, accuracy (with 95% group-bootstrap CIs);
   miss rate at a matched FPR (`target_fpr` in the config); accuracy per case type; the share of contrast
@@ -64,7 +72,8 @@ Every LLM call is cached in `.cache/llm/`, so reruns are free and reproducible.
 ## Repository layout
 ```
 configs/default.yaml        models, concurrency, bootstrap, target FPR
-data/seed_examples.jsonl    23 hand-written seed examples in 6 groups (review them; reuse them or replace them)
+data/examples.jsonl         THE dataset: 99 drafted examples in 25 paired groups, already split (36 dev / 63 test)
+data/seed_examples.jsonl    the first 23 examples, kept separately for the offline tests
 data/sources_template.jsonl input format for rguard.draft
 annotations/                annotator files (the example_* files show the format)
 docs/annotation_guide.md    role and label definitions, how to build groups, double-annotation protocol

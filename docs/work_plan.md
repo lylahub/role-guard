@@ -2,26 +2,24 @@
 
 **Scope:** about 100 fixed-response examples (about 25 sources × 4 variants), four guard conditions (text_only, context, context_cot ablation, role_aware) on one model, an end-to-end run on about 35 examples, and about 15 role-targeted attacks (`disguised_attack`). If there's time: rerun everything with a second model by changing `configs/`.
 
-Fill in names:
-
 | Role | Person | Owns | Also |
 |---|---|---|---|
-| P1 Data lead | ______ | annotation guide, sources, paired variants, disguised attacks, agreement stats | failure analysis |
-| P2 Baselines & evaluation | ______ | `configs/`, text_only / context / context_cot prompts, `run_guards`, `run_e2e`, judge spot-checks, results tables | second annotator |
-| P3 Role-aware guard | ______ | role-aware prompt + rubric, role accuracy, paired-context analysis, failure analysis | second annotator |
+| P1 Data lead | Lyla Liu | annotation guide, sources, paired variants, disguised attacks, agreement stats | failure analysis |
+| P2 Baselines & evaluation | Effie Wu | `configs/`, text_only / context / context_cot prompts, `run_guards`, `run_e2e`, judge spot-checks, results tables | second annotator |
+| P3 Role-aware guard | Sicheng Mo | role-aware prompt + rubric, role accuracy, paired-context analysis, failure analysis | second annotator |
 
 ## Week 1: setup (checkpoint: all guards run on 40 examples)
 - [ ] Everyone: install, run `pytest`, run the mock smoke test (README).
 - [ ] P2: choose the model(s), fill in `configs/default.yaml`, run the seed data on the real model.
-- [ ] P1: finalize the annotation guide, write 25 source documents and assign attack templates (decide which are dev-only).
-- [ ] P1: draft the first 40 examples (`rguard.draft` + review), validate.
+- [ ] Lyla: finalize the annotation guide. `data/examples.jsonl` already has 99 drafted examples (25 groups); review every one with `status: draft-needs-review` or `seed-needs-review`, fix wording, labels and spans, and set `status: reviewed`.
+- [ ] Lyla: replace or add groups wherever the drafts look unrealistic, then re-run `rguard.data validate` and `rguard.data split`.
 - [ ] P3: test the role-aware prompt on seed + the first 40 examples; write down failure patterns.
 - [ ] P2/P3: double-annotate the first batch and compute kappa early to find disagreements over the guide.
 
 ## Week 2: data and main runs (checkpoint: dataset frozen, main table exists)
-- [ ] P1: reach about 100 examples, including about 15 `disguised_attack`; mark about 35 `e2e: true`.
+- [ ] Lyla: finish reviewing all 99 examples (14 are `disguised_attack`; 42 rows are marked `e2e`, which gives 27 distinct test runs).
 - [ ] P2/P3: finish double annotation of the ~30% subset; adjudicate together.
-- [ ] P1: `python -m rguard.data split data/examples.jsonl --dev-frac 0.3`, then **freeze** the dataset (commit it).
+- [ ] Lyla: `python -m rguard.data split data/examples.jsonl --dev-frac 0.3`, then **freeze** the dataset (commit it).
 - [ ] P3: tune the role-aware prompt on **dev only**. P2 does the same for the baselines. Each prompt gets the same amount of effort.
 - [ ] **Freeze all prompts** (git tag `prompts-frozen`), then run `run_guards --split test` once.
 
