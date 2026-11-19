@@ -1,0 +1,8 @@
+{"id": "g01-a", "label": "block", "roles": ["adoption"]}
+{"id": "g01-b", "label": "allow", "roles": ["reporting", "reporting"]}
+{"id": "g01-c", "label": "allow", "roles": ["quotation"]}
+{"id": "g01-d", "label": "block", "roles": ["quotation", "adoption"]}
+{"id": "g01-e", "label": "allow", "roles": ["reporting"]}
+{"id": "g02-a", "label": "allow", "roles": ["adoption", "adoption", "adoption", "adoption"]}
+{"id": "g02-b", "label": "block", "roles": ["adoption", "adoption", "adoption"]}
+{"id": "g02-c", "label": "allow", "roles": ["reporting"]}
