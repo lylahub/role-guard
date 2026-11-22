@@ -12,10 +12,21 @@ CS239 project code (Option B scope). It compares four output guards for a docume
 All four share the same model, temperature and security-policy text (`src/rguard/prompts.py`), so any
 difference between them comes from the information they see or the procedure they follow.
 
+**External baselines** (see `THIRD_PARTY_NOTICES.md`):
+
+| Baseline | Where it acts | Used in |
+|---|---|---|
+| `piguard` | Released PIGuard classifier on the **candidate response** (a trained text-only guard) | fixed + end-to-end |
+| `piguard_source` | PIGuard on the **external content**; block if the source is flagged | fixed + end-to-end |
+| `promptarmor` | **Input-side** detect-and-remove: the same guard LLM finds the injection in the source, it is fuzzily removed, then the assistant answers from the cleaned source. Prompt quoted verbatim from the paper's Fig. 2 (no code was released). | end-to-end only |
+
+**External benchmark:** `data/bipia_email_slice.jsonl`, 100 attacked BIPIA EmailQA samples (stratified
+over BIPIA's 15 attack categories) plus 20 clean emails. End-to-end only, since BIPIA has no gold responses.
+
 ## Setup
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[openai,dev]"        # or .[anthropic,dev]
+pip install -e ".[openai,piguard,bipia,dev]"   # or .[anthropic,...]; piguard = transformers+torch (CPU ok)
 export OPENAI_API_KEY=...             # or ANTHROPIC_API_KEY
 pytest -q                             # offline tests, no key needed
 ```
@@ -48,6 +59,15 @@ python -m rguard.run_guards --data data/examples.jsonl --split dev
 # 5. Freeze prompts (git tag), then run TEST once, for fixed responses and end to end
 python -m rguard.run_guards --data data/examples.jsonl --split test --name final-test
 python -m rguard.run_e2e    --data data/examples.jsonl --split test --name final-e2e
+
+# 6. External check on BIPIA EmailQA (end to end; includes PromptArmor and PIGuard)
+python -m rguard.run_e2e --data data/bipia_email_slice.jsonl --split all --name bipia-email
+```
+To rebuild the BIPIA slice (e.g. with the `middle` insertion position, which needs nltk; the committed
+slice uses `start`/`end` only):
+```bash
+git clone --depth 1 https://github.com/microsoft/BIPIA /tmp/BIPIA
+python -m rguard.bipia --bipia-dir /tmp/BIPIA --positions start,end,middle --out data/bipia_email_slice.jsonl
 ```
 Each run writes `results/<name>/` containing `predictions.jsonl` (or `e2e_rows.jsonl`), `results.json` and `report.md`.
 Every LLM call is cached in `.cache/llm/`, so reruns are free and reproducible.
@@ -67,7 +87,8 @@ Every LLM call is cached in `.cache/llm/`, so reruns are free and reproducible.
   role_aware − baseline differences with CIs; span recall and precision; role accuracy and confusion;
   token and latency cost; parse errors (these count as block).
 - **End to end:** attack success rate, useful completion rate, and blocked rate (reported separately)
-  for no guard and for each guard.
+  for no guard, each output guard, and PromptArmor (plus PromptArmor's detection false-negative and
+  false-positive rates against whether the source really contains an attack).
 
 ## Repository layout
 ```

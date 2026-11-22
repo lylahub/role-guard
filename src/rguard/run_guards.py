@@ -18,7 +18,7 @@ import yaml
 
 from . import CASE_TYPES
 from .data import filter_split, load_jsonl, save_jsonl, validate
-from .guards import GUARD_CONDITIONS, run_guard
+from .guards import CLASSIFIER_GUARDS, DEFAULT_GUARDS, run_guard
 from .llm import llm_from_config
 from .metrics import (bootstrap_ci, by_case_type, cost, detection, group_consistency, miss_at_fpr,
                       paired_difference_ci, role_metrics)
@@ -59,7 +59,8 @@ def main(argv=None):
     ap.add_argument("--config", default="configs/default.yaml")
     ap.add_argument("--data", required=True)
     ap.add_argument("--split", default="dev", choices=["dev", "test", "all"])
-    ap.add_argument("--guards", default=",".join(GUARD_CONDITIONS))
+    ap.add_argument("--guards", default=DEFAULT_GUARDS,
+                    help="comma list; PIGuard conditions need `pip install -e .[piguard]`")
     ap.add_argument("--name", help="results subfolder (default: <split>-<model>-<timestamp>)")
     ap.add_argument("--mock", action="store_true", help="offline mock backend (pipeline testing only)")
     ap.add_argument("--limit", type=int, help="only the first N examples (quick checks)")
@@ -84,10 +85,11 @@ def main(argv=None):
     all_preds = []
     for g in guards:
         def one(ex, g=g):
-            r = run_guard(llm, g, ex, ex["candidate_response"], fail_closed=cfg.get("fail_closed", True))
+            r = run_guard(llm, g, ex, ex["candidate_response"], fail_closed=cfg.get("fail_closed", True),
+                          pg_cfg=cfg.get("piguard", {}))
             return {"id": ex["id"], "group_id": ex["group_id"], "case_type": ex["case_type"],
                     "label": ex["label"], "gold_spans": ex.get("spans", []), **r.to_dict()}
-        with ThreadPoolExecutor(max_workers=workers) as pool:
+        with ThreadPoolExecutor(max_workers=1 if g in CLASSIFIER_GUARDS else workers) as pool:
             preds = list(pool.map(one, rows))
         preds_by_guard[g] = preds
         all_preds += preds

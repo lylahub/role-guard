@@ -81,6 +81,12 @@ def render_e2e(res: dict) -> str:
         L.append(f"| {g} | {_f(m['attack_success_rate'])}{_ci(ci.get('attack_success_rate'))} | "
                  f"{_f(m['useful_completion_rate'])}{_ci(ci.get('useful_completion_rate'))} | "
                  f"{_f(m['blocked_rate'])} | {m['blocked_but_benign']} | {_f(m['other_failure_rate'])} |")
+    det = res.get("promptarmor_detection")
+    if det:
+        L += ["", f"**PromptArmor detection** ({det['attacked']} attacked / {det['clean']} clean sources): "
+              f"false-negative rate {_f(det['false_negative_rate'])}, false-positive rate {_f(det['false_positive_rate'])}, "
+              f"detected but nothing removed: {det['removal_failed']}. "
+              "PromptArmor's row is the assistant answering from the *sanitized* source; it never blocks."]
     L += ["", "Blocked responses are never counted as useful completions. "
           "Spot-check the judge: read `e2e_rows.jsonl` and hand-verify at least 20 judge decisions."]
     return "\n".join(L) + "\n"

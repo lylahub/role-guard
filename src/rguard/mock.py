@@ -139,6 +139,10 @@ def mock_complete(system: str, user: str, task: str) -> LLMResponse:
         text = _assistant(user)
     elif task == "judge":
         text = json.dumps(_judge(user))
+    elif task == "promptarmor":
+        src = user
+        inj = next((l.strip() for l in src.splitlines() if re.search(r"\bassistant|\bAI\b|ignore", l, re.I)), None)
+        text = f"Yes\nInjection: {inj}" if inj else "No"
     elif task == "draft":
         text = json.dumps(_draft(user))
     else:

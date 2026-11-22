@@ -7,7 +7,10 @@ from . import ROLES
 from .llm import LLM
 from .prompts import assistant_prompt, guard_prompt, judge_prompt
 
-GUARD_CONDITIONS = ("text_only", "context", "context_cot", "role_aware")
+GUARD_CONDITIONS = ("text_only", "context", "context_cot", "role_aware")   # prompted LLM guards (same model)
+CLASSIFIER_GUARDS = ("piguard", "piguard_source")                         # off-the-shelf PIGuard classifier
+ALL_GUARDS = GUARD_CONDITIONS + CLASSIFIER_GUARDS
+DEFAULT_GUARDS = ",".join(ALL_GUARDS)
 
 
 @dataclass
@@ -39,14 +42,30 @@ def _norm_risk(r, decision: str) -> int:
     return max(0, min(100, r))
 
 
-def run_guard(llm: LLM, condition: str, ex: dict, response: str, fail_closed: bool = True) -> GuardResult:
+def run_classifier_guard(condition: str, ex: dict, response: str, pg_cfg: dict) -> GuardResult:
+    """PIGuard on the response (`piguard`) or on the external content (`piguard_source`)."""
+    from .piguard import injection_prob
+    text = response if condition == "piguard" else ex["source_content"]
+    prob, secs = injection_prob(text, pg_cfg)
+    thr = float(pg_cfg.get("threshold", 0.5))
+    return GuardResult(condition, "block" if prob >= thr else "allow", int(round(100 * prob)),
+                       rationale=f"injection_prob={prob:.3f}", latency_s=secs)
+
+
+def run_guard(llm: LLM, condition: str, ex: dict, response: str, fail_closed: bool = True,
+              pg_cfg: dict | None = None) -> GuardResult:
     """Run one guard condition on (example, candidate response).
 
     If the model output can't be parsed, the guard fails closed (block, risk 100) by default and records
     the error, so parse failures show up in the results instead of silently crashing the run.
     """
+    if condition in CLASSIFIER_GUARDS:
+        cfg = dict(pg_cfg or {})
+        if llm.backend == "mock":
+            cfg["mock"] = True
+        return run_classifier_guard(condition, ex, response, cfg)
     if condition not in GUARD_CONDITIONS:
-        raise ValueError(f"Unknown guard {condition!r}; choose from {GUARD_CONDITIONS}")
+        raise ValueError(f"Unknown guard {condition!r}; choose from {ALL_GUARDS}")
     system, user = guard_prompt(condition, ex, response)
     try:
         out, resp = llm.complete_json(system, user, task=f"guard:{condition}")

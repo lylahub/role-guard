@@ -24,6 +24,12 @@ models:
     temperature: 0.7
     max_tokens: 600
 
+piguard:                    # off-the-shelf classifier baseline (pip install -e ".[piguard]")
+  model: leolee99/PIGuard
+  threshold: 0.5            # block if P(injection) >= threshold; risk score = 100 * P(injection)
+  window_tokens: 480        # classify overlapping windows of long texts, take the max (0 = plain truncation)
+  stride_tokens: 240
+
 concurrency: 4          # parallel API calls
 fail_closed: true       # unparseable guard output counts as "block" (and is reported)
 n_bootstrap: 1000       # group-bootstrap resamples for CIs

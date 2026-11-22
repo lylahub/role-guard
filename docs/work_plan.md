@@ -23,6 +23,12 @@
 - [ ] P3: tune the role-aware prompt on **dev only**. P2 does the same for the baselines. Each prompt gets the same amount of effort.
 - [ ] **Freeze all prompts** (git tag `prompts-frozen`), then run `run_guards --split test` once.
 
+## Added baselines and external benchmark (owner: Effie, with Sicheng)
+- [ ] Week 1: `pip install -e ".[piguard]"`, run `run_guards --guards piguard,piguard_source` on seed data; check the printed label mapping says which label is "injection".
+- [ ] Week 2: dev-split runs include `piguard`, `piguard_source`; end-to-end dev run includes PromptArmor (on by default; `--no-promptarmor` to skip).
+- [ ] Week 3: `run_e2e --data data/bipia_email_slice.jsonl --split all --name bipia-email` with the frozen prompts. Hand-check 20 judge labels on BIPIA too.
+- [ ] Do NOT tune any prompt on BIPIA; it is a held-out generalization check.
+
 ## Week 3: end to end, analysis, writing (keep the last two days for writing only)
 - [ ] P2: `run_e2e --split test`; hand-check at least 20 judge labels and report judge agreement.
 - [ ] P2: optional second-model rerun.

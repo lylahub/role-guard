@@ -11,6 +11,18 @@ tool-using agent; both are prompted classifiers with structured (JSON) output. T
 effect of role recognition from the effect of extra reasoning, we add a fourth condition: the
 context-aware guard with free-form step-by-step reasoning (context-aware + CoT).
 
+## Baselines and external benchmark (add to Design / Dataset and Evaluation)
+Besides our three prompted guards, we compare against two published defenses. **PIGuard** (Li et al.,
+ACL 2025) is a trained prompt-injection classifier; it sees only text, so we apply it to the candidate
+response and, separately, to the external content. **PromptArmor** (Shi et al., 2025) prompts an
+off-the-shelf LLM to detect injected text in the input and removes it by fuzzy matching before the
+assistant answers; we use the prompt from the paper's Figure 2 with the same model as our guards. It is
+an input-side defense, so we evaluate it end to end only. To check generalization beyond our own data,
+we also run the end-to-end evaluation on a 120-example slice of **BIPIA EmailQA** (Yi et al., KDD 2025):
+100 attacked samples stratified over its 15 attack categories and 20 clean emails. BIPIA contains no
+cases where repeating the injected text is legitimate, so it measures attack blocking and utility on
+ordinary tasks; our own dataset remains the test of role distinctions.
+
 ## Hypotheses (new subsection)
 - **H1 (overdefense):** Compared with the context-aware guard, the role-aware guard has a lower
   false-positive rate on legitimate quotation and analysis, so useful task completion is higher.
@@ -22,6 +34,11 @@ context-aware guard with free-form step-by-step reasoning (context-aware + CoT).
   vulnerable if it trusts the role label too much, so we report this subset separately.
 - **H4 (cost):** The role-aware guard uses more tokens and has higher latency.
 - **Against the text-only guard,** we expect both lower false positives and fewer misses.
+- **H5 (input-side defenses):** PromptArmor and source-side PIGuard achieve low attack success, but
+  fail legitimate quotation/analysis requests about the injected text (PromptArmor removes it; source-side
+  PIGuard blocks the whole response), so their useful completion on those cases is lower than role_aware's.
+- **H6 (generalization):** On BIPIA, role_aware's attack success is comparable to the other guards' and
+  its false-block rate on the 20 clean emails is no higher.
 - To rule out a guard looking safer just by blocking more, we also compare guards at a matched
   false-positive rate using their 0–100 risk scores.
 
