@@ -23,6 +23,7 @@ from .llm import llm_from_config
 from .metrics import (bootstrap_ci, by_case_type, cost, detection, group_consistency, miss_at_fpr,
                       paired_difference_ci, role_metrics)
 from .report import render_fixed
+from .role_policy import apply_policy, decide
 
 
 def evaluate(preds_by_guard: dict[str, list[dict]], n_boot: int, target_fpr: float) -> dict:
@@ -51,13 +52,40 @@ def evaluate(preds_by_guard: dict[str, list[dict]], n_boot: int, target_fpr: flo
                 comparisons[b][k] = {
                     "diff": None if da is None or db is None else da - db,
                     "ci": paired_difference_ci(preds_by_guard["role_aware"], preds_by_guard[b], detection, k, n_boot)}
-    return {"guards": out, "comparisons": comparisons}
+    result = {"guards": out, "comparisons": comparisons}
+    if "role_aware_policy" in preds_by_guard:
+        model = preds_by_guard["role_aware"]
+        policy = preds_by_guard["role_aware_policy"]
+        paired = list(zip(model, policy, strict=True))
+        diagnostic = {
+            "disagreements": sum(a["decision"] != b["decision"] for a, b in paired),
+            "policy_fixes": sum(a["decision"] != a["label"] == b["decision"] for a, b in paired),
+            "policy_regressions": sum(a["decision"] == a["label"] != b["decision"] for a, b in paired),
+        }
+        annotated = [b for b in policy if b["gold_policy_decision"] is not None]
+        if annotated:
+            diagnostic["oracle_evidence"] = {
+                "n": len(annotated),
+                "policy_correct": sum(b["decision"] == b["label"] for b in annotated),
+                "oracle_correct": sum(b["gold_policy_decision"] == b["label"] for b in annotated),
+                "oracle_fixes": sum(
+                    b["decision"] != b["label"] == b["gold_policy_decision"] for b in annotated
+                ),
+                "oracle_regressions": sum(
+                    b["decision"] == b["label"] != b["gold_policy_decision"] for b in annotated
+                ),
+            }
+        result["policy_diagnostics"] = diagnostic
+    return result
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="configs/default.yaml")
-    ap.add_argument("--data", required=True)
+    ap.add_argument("--data", required=True, action="append",
+                    help="JSONL dataset path, repeat to evaluate several files as one batch")
+    ap.add_argument("--compare-role-policy", action="store_true",
+                    help="derive a code-policy decision from the same role_aware prediction")
     ap.add_argument("--split", default="dev", choices=["dev", "test", "all"])
     ap.add_argument("--guards", default=DEFAULT_GUARDS,
                     help="comma list; PIGuard conditions need `pip install -e .[piguard]`")
@@ -67,7 +95,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     cfg = yaml.safe_load(open(a.config))
-    rows = load_jsonl(a.data)
+    rows = [row for path in a.data for row in load_jsonl(path)]
     errs, _ = validate(rows)
     if errs:
         raise SystemExit("Dataset has errors; run `python -m rguard.data validate` first:\n  " + "\n  ".join(errs[:20]))
@@ -79,6 +107,8 @@ def main(argv=None):
 
     llm = llm_from_config(cfg, "guard", mock=a.mock)
     guards = [g.strip() for g in a.guards.split(",") if g.strip()]
+    if a.compare_role_policy and "role_aware" not in guards:
+        ap.error("--compare-role-policy requires role_aware in --guards")
     workers = 1 if llm.backend == "mock" else cfg.get("concurrency", 4)
 
     preds_by_guard: dict[str, list[dict]] = {}
@@ -87,12 +117,27 @@ def main(argv=None):
         def one(ex, g=g):
             r = run_guard(llm, g, ex, ex["candidate_response"], fail_closed=cfg.get("fail_closed", True),
                           pg_cfg=cfg.get("piguard", {}))
-            return {"id": ex["id"], "group_id": ex["group_id"], "case_type": ex["case_type"],
-                    "label": ex["label"], "gold_spans": ex.get("spans", []), **r.to_dict()}
+            common = {"id": ex["id"], "group_id": ex["group_id"], "case_type": ex["case_type"],
+                      "label": ex["label"], "gold_spans": ex.get("spans", []),
+                      "dataset": ex.get("dataset", "main"), "contrast": ex.get("contrast"),
+                      "variant": ex.get("variant")}
+            model_pred = {**common, **r.to_dict()}
+            if g != "role_aware" or not a.compare_role_policy:
+                return model_pred, None
+            policy = apply_policy(r, ex["candidate_response"], cfg.get("fail_closed", True))
+            oracle = None
+            if "policy_gold_spans" in ex:
+                oracle, _ = decide(ex["policy_gold_spans"], ex["candidate_response"])
+            return model_pred, {**common, **policy.to_dict(), "gold_policy_decision": oracle}
         with ThreadPoolExecutor(max_workers=1 if g in CLASSIFIER_GUARDS else workers) as pool:
-            preds = list(pool.map(one, rows))
+            batch = list(pool.map(one, rows))
+        preds = [model for model, _ in batch]
         preds_by_guard[g] = preds
         all_preds += preds
+        if g == "role_aware" and a.compare_role_policy:
+            policy_preds = [policy for _, policy in batch]
+            preds_by_guard["role_aware_policy"] = policy_preds
+            all_preds += policy_preds
         d = detection(preds)
         print(f"{g:12s} miss={d['attack_miss_rate']}  fpr={d['false_positive_rate']}  acc={d['accuracy']}")
 
@@ -102,10 +147,30 @@ def main(argv=None):
     save_jsonl(all_preds, out_dir / "predictions.jsonl")
 
     res = evaluate(preds_by_guard, cfg.get("n_bootstrap", 1000), cfg.get("target_fpr", 0.10))
+    if a.compare_role_policy:
+        res["policy_slices"] = {
+            name: {
+                guard: {
+                    **detection(selected),
+                    **group_consistency(selected),
+                }
+                for guard, preds in preds_by_guard.items()
+                if (selected := [p for p in preds if p["contrast"] == name])
+            }
+            for name in sorted({r["contrast"] for r in rows if r.get("contrast")})
+        }
+        variants = sorted({(r["contrast"], r["variant"]) for r in rows if r.get("variant")})
+        res["policy_variants"] = [
+            {"contrast": contrast, "variant": variant, "guard": guard, **detection(selected)}
+            for contrast, variant in variants
+            for guard, preds in preds_by_guard.items()
+            if (selected := [p for p in preds
+                             if p["contrast"] == contrast and p["variant"] == variant])
+        ]
     res["meta"] = {"kind": "fixed", "split": a.split, "backend": llm.backend, "model": llm.model,
                    "n": len(rows), "groups": len({r["group_id"] for r in rows}),
                    "n_boot": cfg.get("n_bootstrap", 1000), "target_fpr": cfg.get("target_fpr", 0.10),
-                   "data": a.data, "guards": guards}
+                   "data": a.data[0] if len(a.data) == 1 else a.data, "guards": list(preds_by_guard)}
     res["case_types"] = [c for c in CASE_TYPES if any(r["case_type"] == c for r in rows)]
     (out_dir / "results.json").write_text(json.dumps(res, indent=2))
     (out_dir / "report.md").write_text(render_fixed(res))

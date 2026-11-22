@@ -7,7 +7,7 @@ from . import ROLES
 from .llm import LLM
 from .prompts import assistant_prompt, guard_prompt, judge_prompt
 
-GUARD_CONDITIONS = ("text_only", "context", "context_cot", "role_aware")   # prompted LLM guards (same model)
+GUARD_CONDITIONS = ("text_only", "context", "context_cot", "task_alignment", "role_aware")   # prompted LLM guards (same model)
 CLASSIFIER_GUARDS = ("piguard", "piguard_source")                         # off-the-shelf PIGuard classifier
 ALL_GUARDS = GUARD_CONDITIONS + CLASSIFIER_GUARDS
 DEFAULT_GUARDS = ",".join(ALL_GUARDS)
@@ -18,7 +18,7 @@ class GuardResult:
     condition: str
     decision: str              # "allow" | "block"
     risk: int                  # 0-100
-    spans: list = field(default_factory=list)   # role_aware only
+    spans: list = field(default_factory=list)   # structured guards only
     rationale: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
@@ -69,23 +69,31 @@ def run_guard(llm: LLM, condition: str, ex: dict, response: str, fail_closed: bo
     system, user = guard_prompt(condition, ex, response)
     try:
         out, resp = llm.complete_json(system, user, task=f"guard:{condition}")
+        if condition in ("task_alignment", "role_aware"):
+            if out.get("decision") not in ("allow", "block"):
+                raise ValueError("Missing or invalid structured guard decision")
+            spans = out.get("spans")
+            if not isinstance(spans, list) or any(not isinstance(s, dict) for s in spans):
+                raise ValueError("Expected a list of span objects")
     except Exception as e:  # noqa: BLE001
         d = "block" if fail_closed else "allow"
         return GuardResult(condition, d, 100 if fail_closed else 0, parse_error=str(e)[:300])
 
     decision = _norm_decision(out.get("decision"))
     spans = []
-    if condition == "role_aware":
-        for s in out.get("spans") or []:
-            role = str(s.get("role", "")).lower().strip()
-            if role == "analysis":
-                role = "reporting"
-            spans.append({
+    if condition in ("task_alignment", "role_aware"):
+        for s in out["spans"]:
+            span = {
                 "text": str(s.get("text", "")),
-                "role": role if role in ROLES else "unknown",
-                "user_authorized": bool(s.get("user_authorized", False)),
-                "harmful_if_followed": bool(s.get("harmful_if_followed", False)),
-            })
+                "user_authorized": s.get("user_authorized"),
+                "harmful_if_followed": s.get("harmful_if_followed"),
+            }
+            if condition == "role_aware":
+                role = str(s.get("role", "")).lower().strip()
+                if role == "analysis":
+                    role = "reporting"
+                span["role"] = role if role in ROLES else "unknown"
+            spans.append(span)
     return GuardResult(
         condition=condition,
         decision=decision,

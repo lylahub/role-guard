@@ -1,9 +1,9 @@
-# Experiment configuration. Use the SAME guard model for all four guard conditions.
+# Experiment configuration. Use the SAME guard model for all prompted guard conditions.
 # Backends: openai | anthropic | mock   (mock = offline smoke testing only; numbers are meaningless)
 # Fill in model names you have access to and keep them fixed for the whole project.
 
 models:
-  guard:                      # used by text_only, context, context_cot, role_aware
+  guard:                      # used by text_only, context, context_cot, task_alignment, role_aware
     backend: openai
     model: REPLACE_WITH_MODEL_NAME     # e.g. a small, cheap instruction-following model
     temperature: 0

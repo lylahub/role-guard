@@ -33,9 +33,10 @@ def render_fixed(res: dict) -> str:
           "|---|---|---|---|---|---|---|---|"]
     for g, r in res["guards"].items():
         d, ci, m, gc, c = r["detection"], r["ci"], r["miss_at_fpr"], r["group_consistency"], r["cost"]
+        operating_point = "–" if g == "role_aware_policy" else f"{_f(m['miss_rate'])} (t={m['threshold']})"
         L.append(f"| {g} | {_f(d['attack_miss_rate'])}{_ci(ci.get('attack_miss_rate'))} | "
                  f"{_f(d['false_positive_rate'])}{_ci(ci.get('false_positive_rate'))} | "
-                 f"{_f(d['accuracy'])}{_ci(ci.get('accuracy'))} | {_f(m['miss_rate'])} (t={m['threshold']}) | "
+                 f"{_f(d['accuracy'])}{_ci(ci.get('accuracy'))} | {operating_point} | "
                  f"{_f(gc['contrast_correct'])} ({gc['contrast_groups']}) | "
                  f"{c.get('mean_input_tokens', 0):.0f}/{c.get('mean_output_tokens', 0):.0f} | "
                  f"{c.get('mean_latency_s', 0):.2f} |")
@@ -62,6 +63,30 @@ def render_fixed(res: dict) -> str:
               f"({rm['gold_spans']} gold / {rm['pred_spans']} predicted spans)",
               f"- Role accuracy on matched spans: {_f(rm['role_accuracy_on_matched'])}",
               "- Confusion (gold→predicted): " + ", ".join(f"{k}: {v}" for k, v in rm["confusion"].items())]
+    if diag := res.get("policy_diagnostics"):
+        L += ["", "## Code policy vs. model decision", "",
+              f"- Decisions changed: {diag['disagreements']}",
+              f"- Errors fixed: {diag['policy_fixes']} · new errors: {diag['policy_regressions']}",
+              "- Both conditions share one model call per example. Token and latency figures describe that call."]
+        if oracle := diag.get("oracle_evidence"):
+            L += [f"- Draft gold evidence: {oracle['oracle_correct']}/{oracle['n']} correct "
+                  f"vs. {oracle['policy_correct']}/{oracle['n']} using predicted evidence "
+                  f"({oracle['oracle_fixes']} fixes, {oracle['oracle_regressions']} regressions)."]
+    if slices := res.get("policy_slices"):
+        L += ["", "## Policy contrast sets", "",
+              "| Contrast | Guard | n | Miss rate | False-positive rate | Whole group correct |",
+              "|---|---|---|---|---|---|"]
+        for name, guards in slices.items():
+            for guard, m in guards.items():
+                L.append(f"| {name} | {guard} | {m['n']} | {_f(m['attack_miss_rate'])} | "
+                         f"{_f(m['false_positive_rate'])} | {_f(m['contrast_correct'])} |")
+    if variants := res.get("policy_variants"):
+        L += ["", "## Contrast results by variant", "",
+              "| Contrast | Variant | Guard | n | Miss rate | False-positive rate |",
+              "|---|---|---|---|---|---|"]
+        for m in variants:
+            L.append(f"| {m['contrast']} | {m['variant']} | {m['guard']} | {m['n']} | "
+                     f"{_f(m['attack_miss_rate'])} | {_f(m['false_positive_rate'])} |")
     pe = {g: r["cost"].get("parse_errors", 0) for g, r in res["guards"].items()}
     if any(pe.values()):
         L += ["", f"**Parse errors (counted as block):** {pe}"]

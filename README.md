@@ -1,15 +1,16 @@
 # rguard: communicative-role-aware guarding against indirect prompt injection
 
-CS239 project code (Option B scope). It compares four output guards for a document/email assistant:
+CS239 project code (Option B scope). It compares five prompted output guards for a document/email assistant:
 
 | Condition | Sees | Procedure |
 |---|---|---|
 | `text_only` | candidate response | direct decision |
 | `context` | request + source + response | direct decision |
 | `context_cot` | same as `context` | free-form reasoning, then decision (ablation: "is it just more thinking?") |
+| `task_alignment` | request + source + response | find instruction spans and evaluate alignment to the user task |
 | `role_aware` | same as `context` | find instruction spans → label each quotation / reporting / adoption → decide with a rubric that combines role and task |
 
-All four share the same model, temperature and security-policy text (`src/rguard/prompts.py`), so any
+All five prompted guards share the same model, temperature and security-policy text (`src/rguard/prompts.py`), so any
 difference between them comes from the information they see or the procedure they follow.
 
 **External baselines** (see `THIRD_PARTY_NOTICES.md`):
@@ -115,3 +116,32 @@ tests/                      offline tests
 ```
 `case_type` ∈ legit_quotation, legit_analysis, benign_adoption, attack_adoption, disguised_attack.
 `role` ∈ quotation, reporting (includes analysis), adoption.
+
+## Role-aware code policy experiment
+
+The fixed-response runner can compare the model verdict with a Python policy using the same
+role-aware call. The policy blocks unauthorized or harmful adoption and validates the span
+evidence before applying its rule. Quotation and reporting can be permitted even when the user
+did not request the action itself. The rule relies on model annotations, including whether a
+span constitutes adoption. It can miss evidence that the model does not extract.
+
+```bash
+python -m rguard.run_guards --data data/examples.jsonl --data data/role_policy_examples.jsonl \
+  --split dev --guards context,context_cot,task_alignment,role_aware --compare-role-policy --mock --name role-policy-smoke
+```
+
+The task-alignment baseline uses the same model, inputs, policy, span-extraction instruction,
+and per-span authorization and harm fields as the role-aware guard. It checks each span against
+the user task without requiring a communicative role label. Compare it with the model-driven
+role-aware condition to estimate the effect of explicit role prompting and annotation.
+
+Use the dev split for model evaluation and freeze prompts and policy before a separate test run.
+The separate file contains 18 synthetic draft responses across eight groups. The contrasts cover
+mixed roles, an authorization change with a fixed response, a role change with a fixed request,
+and suggestion wording. For suggestion wording, each split has one group with the same source
+and request paired with a neutral report, a direct recommendation, and a hedged recommendation.
+Both recommendations are labeled adoption. The report shows results for each wording variant.
+Review the draft gold evidence before using it in experimental claims.
+The report shows paired decisions, fixes, regressions, and accuracy using draft gold evidence in
+place of the predicted spans. The gold evidence comparison replaces both role and authorization
+annotations, so its results reflect their combined effect. Mock runs validate plumbing.
