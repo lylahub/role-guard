@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -142,11 +143,23 @@ class LLM:
         if self._client is None:
             from openai import OpenAI
             self._client = OpenAI()
-        kwargs = dict(model=self.model, temperature=self.temperature, max_tokens=self.max_tokens,
+        kwargs = dict(model=self.model, max_completion_tokens=self.max_tokens,
                       messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
+        if not getattr(self, "_no_temperature", False):
+            kwargs["temperature"] = self.temperature
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
-        r = self._client.chat.completions.create(**kwargs)
+        try:
+            r = self._client.chat.completions.create(**kwargs)
+        except Exception as e:  # some models only accept their default temperature
+            if "temperature" in str(e).lower() and "temperature" in kwargs:
+                self._no_temperature = True
+                print(f"[llm] {self.model} rejected temperature={self.temperature}; using the model default. "
+                      f"Report this in the paper.", file=sys.stderr)
+                kwargs.pop("temperature")
+                r = self._client.chat.completions.create(**kwargs)
+            else:
+                raise
         u = r.usage
         return LLMResponse(r.choices[0].message.content or "", u.prompt_tokens if u else 0,
                            u.completion_tokens if u else 0)
@@ -155,9 +168,21 @@ class LLM:
         if self._client is None:
             import anthropic
             self._client = anthropic.Anthropic()
-        r = self._client.messages.create(model=self.model, system=system, max_tokens=self.max_tokens,
-                                         temperature=self.temperature,
-                                         messages=[{"role": "user", "content": user}])
+        kwargs = dict(model=self.model, system=system, max_tokens=self.max_tokens,
+                      messages=[{"role": "user", "content": user}])
+        if not getattr(self, "_no_temperature", False):
+            kwargs["temperature"] = self.temperature
+        try:
+            r = self._client.messages.create(**kwargs)
+        except Exception as e:
+            if "temperature" in str(e).lower() and "temperature" in kwargs:
+                self._no_temperature = True
+                print(f"[llm] {self.model} rejected temperature={self.temperature}; using the model default. "
+                      f"Report this in the paper.", file=sys.stderr)
+                kwargs.pop("temperature")
+                r = self._client.messages.create(**kwargs)
+            else:
+                raise
         text = "".join(b.text for b in r.content if getattr(b, "type", "") == "text")
         return LLMResponse(text, r.usage.input_tokens, r.usage.output_tokens)
 
