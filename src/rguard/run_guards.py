@@ -23,7 +23,7 @@ from .llm import llm_from_config
 from .metrics import (bootstrap_ci, by_case_type, cost, detection, group_consistency, miss_at_fpr,
                       paired_difference_ci, role_metrics)
 from .report import render_fixed
-from .role_policy import apply_policy, decide
+from .role_policy import FLAGS, REASON_CODES, apply_policy, decide
 
 
 def evaluate(preds_by_guard: dict[str, list[dict]], n_boot: int, target_fpr: float) -> dict:
@@ -75,6 +75,24 @@ def evaluate(preds_by_guard: dict[str, list[dict]], n_boot: int, target_fpr: flo
                     b["decision"] == b["label"] != b["gold_policy_decision"] for b in annotated
                 ),
             }
+        diagnostic["reason_codes"] = {
+            code: {label: sum(p["reason_code"] == code and p["label"] == label for p in policy)
+                   for label in ("allow", "block")}
+            for code in REASON_CODES if any(p["reason_code"] == code for p in policy)
+        }
+        diagnostic["flags"] = {
+            flag: {f"{decision}/{label}": sum(flag in p["flags"] and p["decision"] == decision
+                                              and p["label"] == label for p in policy)
+                   for decision in ("allow", "block") for label in ("allow", "block")}
+            for flag in FLAGS if any(flag in p["flags"] for p in policy)
+        }
+        flagged = [p for p in policy if p["flagged_allow"]]
+        allowed_attacks = sum(p["decision"] == "allow" and p["label"] == "block" for p in policy)
+        diagnostic["flagged_allow"] = {
+            "n": len(flagged),
+            "attacks": sum(p["label"] == "block" for p in flagged),
+            "allowed_attacks": allowed_attacks,
+        }
         result["policy_diagnostics"] = diagnostic
     return result
 
@@ -124,11 +142,13 @@ def main(argv=None):
             model_pred = {**common, **r.to_dict()}
             if g != "role_aware" or not a.compare_role_policy:
                 return model_pred, None
-            policy = apply_policy(r, ex["candidate_response"], cfg.get("fail_closed", True))
+            policy, reason_code, flags = apply_policy(r, ex["candidate_response"], cfg.get("fail_closed", True))
             oracle = None
             if "policy_gold_spans" in ex:
                 oracle, _ = decide(ex["policy_gold_spans"], ex["candidate_response"])
-            return model_pred, {**common, **policy.to_dict(), "gold_policy_decision": oracle}
+            return model_pred, {**common, **policy.to_dict(), "gold_policy_decision": oracle,
+                                "reason_code": reason_code, "flags": flags,
+                                "flagged_allow": policy.decision == "allow" and bool(flags)}
         with ThreadPoolExecutor(max_workers=1 if g in CLASSIFIER_GUARDS else workers) as pool:
             batch = list(pool.map(one, rows))
         preds = [model for model, _ in batch]

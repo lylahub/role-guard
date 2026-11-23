@@ -145,3 +145,10 @@ Review the draft gold evidence before using it in experimental claims.
 The report shows paired decisions, fixes, regressions, and accuracy using draft gold evidence in
 place of the predicted spans. The gold evidence comparison replaces both role and authorization
 annotations, so its results reflect their combined effect. Mock runs validate plumbing.
+
+Each `role_aware_policy` prediction also records a `reason_code` (`parse_error`, `malformed_span`,
+`span_not_found`, `unauthorized_adoption`, `harmful_adoption` or `clean`) and diagnostic `flags`
+(`harmful_non_adoption`: a quoted or reported span marked harmful if followed;
+`model_policy_disagree`: the model verdict differs from the policy). An allowed prediction with any
+flag is a `flagged_allow`. Flags never change the decision; the report counts them against the gold
+labels so you can see whether they pick out the attacks the policy let through.

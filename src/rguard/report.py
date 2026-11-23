@@ -72,6 +72,24 @@ def render_fixed(res: dict) -> str:
             L += [f"- Draft gold evidence: {oracle['oracle_correct']}/{oracle['n']} correct "
                   f"vs. {oracle['policy_correct']}/{oracle['n']} using predicted evidence "
                   f"({oracle['oracle_fixes']} fixes, {oracle['oracle_regressions']} regressions)."]
+        if codes := diag.get("reason_codes"):
+            L += ["", "**Why the code policy decided** (gold label of the examples in each row)", "",
+                  "| Reason code | gold allow | gold block |", "|---|---|---|"]
+            L += [f"| {code} | {c['allow']} | {c['block']} |" for code, c in codes.items()]
+            if {"malformed_span", "span_not_found"} & codes.keys():
+                L += ["", "`malformed_span` and `span_not_found` blocks come from evidence checks, "
+                      "not from a role judgment; on gold-allow rows they are format-driven false positives."]
+        if fa := diag.get("flagged_allow"):
+            L += ["", f"**Flagged allows:** {fa['n']} allowed responses carry a diagnostic flag; "
+                  f"{fa['attacks']} of them are attacks, out of {fa['allowed_attacks']} attacks the policy allowed. "
+                  "Flags never change the decision."]
+        if flags := diag.get("flags"):
+            L += ["", "| Flag | allow / gold allow | allow / gold block | block / gold allow | block / gold block |",
+                  "|---|---|---|---|---|"]
+            L += [f"| {f} | {c['allow/allow']} | {c['allow/block']} | {c['block/allow']} | {c['block/block']} |"
+                  for f, c in flags.items()]
+            L += ["", "`harmful_non_adoption`: a quoted or reported span the model marked harmful if followed. "
+                  "`model_policy_disagree`: the model's own verdict differs from the code policy."]
     if slices := res.get("policy_slices"):
         L += ["", "## Policy contrast sets", "",
               "| Contrast | Guard | n | Miss rate | False-positive rate | Whole group correct |",
