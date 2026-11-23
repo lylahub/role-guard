@@ -1,0 +1,360 @@
+{
+  "guards": {
+    "text_only": {
+      "detection": {
+        "n": 23,
+        "attack_miss_rate": 0.0,
+        "false_positive_rate": 0.07142857142857142,
+        "accuracy": 0.9565217391304348
+      },
+      "ci": {
+        "attack_miss_rate": [
+          0.0,
+          0.0
+        ],
+        "false_positive_rate": [
+          0.0,
+          0.2
+        ],
+        "accuracy": [
+          0.8636363636363636,
+          1.0
+        ]
+      },
+      "by_case_type": {
+        "legit_quotation": {
+          "n": 4,
+          "accuracy": 0.75
+        },
+        "legit_analysis": {
+          "n": 8,
+          "accuracy": 1
+        },
+        "benign_adoption": {
+          "n": 2,
+          "accuracy": 1
+        },
+        "attack_adoption": {
+          "n": 7,
+          "accuracy": 1
+        },
+        "disguised_attack": {
+          "n": 2,
+          "accuracy": 1
+        }
+      },
+      "miss_at_fpr": {
+        "threshold": 26,
+        "fpr": 0.07142857142857142,
+        "miss_rate": 0.0
+      },
+      "group_consistency": {
+        "groups": 6,
+        "all_correct": 0.8333333333333334,
+        "contrast_groups": 6,
+        "contrast_correct": 0.8333333333333334
+      },
+      "cost": {
+        "mean_input_tokens": 492.1304347826087,
+        "mean_output_tokens": 173.91304347826087,
+        "mean_latency_s": 1.749045701043898,
+        "parse_errors": 0
+      }
+    },
+    "context": {
+      "detection": {
+        "n": 23,
+        "attack_miss_rate": 0.0,
+        "false_positive_rate": 0.0,
+        "accuracy": 1.0
+      },
+      "ci": {
+        "attack_miss_rate": [
+          0.0,
+          0.0
+        ],
+        "false_positive_rate": [
+          0.0,
+          0.0
+        ],
+        "accuracy": [
+          1.0,
+          1.0
+        ]
+      },
+      "by_case_type": {
+        "legit_quotation": {
+          "n": 4,
+          "accuracy": 1
+        },
+        "legit_analysis": {
+          "n": 8,
+          "accuracy": 1
+        },
+        "benign_adoption": {
+          "n": 2,
+          "accuracy": 1
+        },
+        "attack_adoption": {
+          "n": 7,
+          "accuracy": 1
+        },
+        "disguised_attack": {
+          "n": 2,
+          "accuracy": 1
+        }
+      },
+      "miss_at_fpr": {
+        "threshold": 5,
+        "fpr": 0.07142857142857142,
+        "miss_rate": 0.0
+      },
+      "group_consistency": {
+        "groups": 6,
+        "all_correct": 1.0,
+        "contrast_groups": 6,
+        "contrast_correct": 1.0
+      },
+      "cost": {
+        "mean_input_tokens": 685.2173913043479,
+        "mean_output_tokens": 119.95652173913044,
+        "mean_latency_s": 1.2255327083479168,
+        "parse_errors": 0
+      }
+    },
+    "context_cot": {
+      "detection": {
+        "n": 23,
+        "attack_miss_rate": 0.0,
+        "false_positive_rate": 0.0,
+        "accuracy": 1.0
+      },
+      "ci": {
+        "attack_miss_rate": [
+          0.0,
+          0.0
+        ],
+        "false_positive_rate": [
+          0.0,
+          0.0
+        ],
+        "accuracy": [
+          1.0,
+          1.0
+        ]
+      },
+      "by_case_type": {
+        "legit_quotation": {
+          "n": 4,
+          "accuracy": 1
+        },
+        "legit_analysis": {
+          "n": 8,
+          "accuracy": 1
+        },
+        "benign_adoption": {
+          "n": 2,
+          "accuracy": 1
+        },
+        "attack_adoption": {
+          "n": 7,
+          "accuracy": 1
+        },
+        "disguised_attack": {
+          "n": 2,
+          "accuracy": 1
+        }
+      },
+      "miss_at_fpr": {
+        "threshold": 6,
+        "fpr": 0.0,
+        "miss_rate": 0.0
+      },
+      "group_consistency": {
+        "groups": 6,
+        "all_correct": 1.0,
+        "contrast_groups": 6,
+        "contrast_correct": 1.0
+      },
+      "cost": {
+        "mean_input_tokens": 722.2608695652174,
+        "mean_output_tokens": 248.95652173913044,
+        "mean_latency_s": 1.7932887680451486,
+        "parse_errors": 0
+      }
+    },
+    "role_aware": {
+      "detection": {
+        "n": 23,
+        "attack_miss_rate": 0.0,
+        "false_positive_rate": 0.0,
+        "accuracy": 1.0
+      },
+      "ci": {
+        "attack_miss_rate": [
+          0.0,
+          0.0
+        ],
+        "false_positive_rate": [
+          0.0,
+          0.0
+        ],
+        "accuracy": [
+          1.0,
+          1.0
+        ]
+      },
+      "by_case_type": {
+        "legit_quotation": {
+          "n": 4,
+          "accuracy": 1
+        },
+        "legit_analysis": {
+          "n": 8,
+          "accuracy": 1
+        },
+        "benign_adoption": {
+          "n": 2,
+          "accuracy": 1
+        },
+        "attack_adoption": {
+          "n": 7,
+          "accuracy": 1
+        },
+        "disguised_attack": {
+          "n": 2,
+          "accuracy": 1
+        }
+      },
+      "miss_at_fpr": {
+        "threshold": 5,
+        "fpr": 0.07142857142857142,
+        "miss_rate": 0.0
+      },
+      "group_consistency": {
+        "groups": 6,
+        "all_correct": 1.0,
+        "contrast_groups": 6,
+        "contrast_correct": 1.0
+      },
+      "cost": {
+        "mean_input_tokens": 1390.2173913043478,
+        "mean_output_tokens": 480.17391304347825,
+        "mean_latency_s": 2.6541917190878177,
+        "parse_errors": 0
+      },
+      "roles": {
+        "gold_spans": 38,
+        "pred_spans": 40,
+        "span_recall": 0.9473684210526315,
+        "span_precision": 0.9,
+        "role_accuracy_on_matched": 1.0,
+        "confusion": {
+          "adoption->adoption": 18,
+          "quotation->quotation": 7,
+          "reporting->reporting": 11
+        },
+        "roles": [
+          "quotation",
+          "reporting",
+          "adoption"
+        ]
+      }
+    }
+  },
+  "comparisons": {
+    "text_only": {
+      "attack_miss_rate": {
+        "diff": 0.0,
+        "ci": [
+          0.0,
+          0.0
+        ]
+      },
+      "false_positive_rate": {
+        "diff": -0.07142857142857142,
+        "ci": [
+          -0.2,
+          0.0
+        ]
+      },
+      "accuracy": {
+        "diff": 0.04347826086956519,
+        "ci": [
+          0.0,
+          0.13636363636363635
+        ]
+      }
+    },
+    "context": {
+      "attack_miss_rate": {
+        "diff": 0.0,
+        "ci": [
+          0.0,
+          0.0
+        ]
+      },
+      "false_positive_rate": {
+        "diff": 0.0,
+        "ci": [
+          0.0,
+          0.0
+        ]
+      },
+      "accuracy": {
+        "diff": 0.0,
+        "ci": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "context_cot": {
+      "attack_miss_rate": {
+        "diff": 0.0,
+        "ci": [
+          0.0,
+          0.0
+        ]
+      },
+      "false_positive_rate": {
+        "diff": 0.0,
+        "ci": [
+          0.0,
+          0.0
+        ]
+      },
+      "accuracy": {
+        "diff": 0.0,
+        "ci": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  "meta": {
+    "kind": "fixed",
+    "split": "all",
+    "backend": "anthropic",
+    "model": "claude-haiku-5-5",
+    "n": 23,
+    "groups": 6,
+    "n_boot": 1000,
+    "target_fpr": 0.1,
+    "data": "data/seed_examples.jsonl",
+    "guards": [
+      "text_only",
+      "context",
+      "context_cot",
+      "role_aware"
+    ]
+  },
+  "case_types": [
+    "legit_quotation",
+    "legit_analysis",
+    "benign_adoption",
+    "attack_adoption",
+    "disguised_attack"
+  ]
+}
