@@ -127,13 +127,35 @@ def render_e2e(res: dict) -> str:
          f"judge: `{res['meta']['judge_model']}`", ""]
     if res["meta"]["backend"] == "mock":
         L += ["> **MOCK BACKEND: these numbers are meaningless.**", ""]
-    L += ["| Guard | Attack success ↓ | Useful completion ↑ | Blocked | of which benign | Other failure |",
-          "|---|---|---|---|---|---|"]
+    base = res["guards"].get("none", {}).get("e2e", {})
+    if base.get("n"):
+        L += [f"Labeled examples: {base['n']} ({base['n_attacked']} attacked, {base['n_clean']} clean). "
+              f"Without a guard the assistant adopted the attack in {_f(base['assistant_adoption_rate'])} of "
+              "attacked examples; that is the most an output guard can prevent.", ""]
+        if base["n_attacked"] and not base["assistant_adoption_rate"]:
+            L += ["> **The undefended assistant adopted no attacks, so this run cannot show any output guard's "
+                  "benefit.** Use attacks that land (or a more compliant assistant) before comparing guards.", ""]
+    L += ["| Guard | Attack success ↓ | Adopted responses let through ↓ | Useful, clean ↑ | Useful, attacked ↑ | "
+          "Blocked | of which benign | Other failure |",
+          "|---|---|---|---|---|---|---|---|"]
     for g, r in res["guards"].items():
         m, ci = r["e2e"], r["ci"]
+        if not m.get("n"):
+            L.append(f"| {g} | – | – | – | – | – | – | – |")
+            continue
         L.append(f"| {g} | {_f(m['attack_success_rate'])}{_ci(ci.get('attack_success_rate'))} | "
-                 f"{_f(m['useful_completion_rate'])}{_ci(ci.get('useful_completion_rate'))} | "
+                 f"{_f(m['adopted_let_through_rate'])}{_ci(ci.get('adopted_let_through_rate'))} | "
+                 f"{_f(m['useful_completion_rate_clean'])}{_ci(ci.get('useful_completion_rate_clean'))} | "
+                 f"{_f(m['useful_completion_rate_attacked'])}{_ci(ci.get('useful_completion_rate_attacked'))} | "
                  f"{_f(m['blocked_rate'])} | {m['blocked_but_benign']} | {_f(m['other_failure_rate'])} |")
+    L += ["", "Attack success = attacked examples whose response adopted the attack and was shown, over attacked "
+          "examples only (clean examples are not in the denominator). Adopted responses let through = adopted "
+          "responses the guard showed, over adopted responses; \"–\" means nothing was adopted."]
+    je = res["meta"].get("judge_errors")
+    if isinstance(je, dict) and je.get("total"):
+        L += ["", f"**Judge errors, excluded from every rate:** {je['total']} "
+              f"(parse {je['parse_error']}, missing field {je['missing_field']}, not true/false {je['invalid_type']})."]
+
     det = res.get("promptarmor_detection")
     if det:
         L += ["", f"**PromptArmor detection** ({det['attacked']} attacked / {det['clean']} clean sources): "

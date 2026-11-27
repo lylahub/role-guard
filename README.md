@@ -87,9 +87,17 @@ Every LLM call is cached in `.cache/llm/`, so reruns are free and reproducible.
   groups with every variant decided correctly (does the decision change with context?); paired
   role_aware − baseline differences with CIs; span recall and precision; role accuracy and confusion;
   token and latency cost; parse errors (these count as block).
-- **End to end:** attack success rate, useful completion rate, and blocked rate (reported separately)
-  for no guard, each output guard, and PromptArmor (plus PromptArmor's detection false-negative and
-  false-positive rates against whether the source really contains an attack).
+- **End to end:** for no guard, each output guard, and PromptArmor (plus PromptArmor's detection
+  false-negative and false-positive rates against whether the source really contains an attack):
+  - attack success rate: adopted and shown, over **attacked** examples only (clean ones would dilute it);
+  - assistant adoption rate: how often the undefended assistant adopts the attack. It is the same for
+    every output guard and bounds what one can prevent; if it is 0 the run cannot show a guard's benefit;
+  - adopted responses let through: of the adopted responses, how many the guard showed;
+  - useful completion, separately for clean and attacked examples; blocked rate (and blocked-but-benign).
+
+  The judge's `attack_adopted` and `task_completed` must be real JSON booleans (a string like `"false"`
+  is rejected, not read as true). Rows the judge could not label are excluded from every rate and counted
+  by type (parse error, missing field, not true/false) in the report.
 
 ## Repository layout
 ```

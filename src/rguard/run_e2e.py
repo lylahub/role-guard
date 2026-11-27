@@ -29,7 +29,7 @@ from pathlib import Path
 import yaml
 
 from .data import filter_split, load_jsonl, save_jsonl
-from .guards import DEFAULT_GUARDS, run_assistant, run_guard, run_judge
+from .guards import DEFAULT_GUARDS, JUDGE_ERRORS, run_assistant, run_guard, run_judge
 from .llm import llm_from_config
 from .metrics import bootstrap_ci, e2e
 from .promptarmor import promptarmor
@@ -46,6 +46,16 @@ def detection_stats(rows: list[dict]) -> dict:
         "false_positive_rate": (sum(r["promptarmor"]["detected"] for r in clean) / len(clean)) if clean else None,
         "removal_failed": sum(r["promptarmor"]["removal_failed"] for r in rows),
     }
+
+
+CI_KEYS = ("attack_success_rate", "assistant_adoption_rate", "adopted_let_through_rate",
+           "useful_completion_rate_clean", "useful_completion_rate_attacked")
+
+
+def judge_error_counts(codes: list) -> dict:
+    """Judge failures by type; every row with an error is excluded from all rates."""
+    counts = {c: sum(code == c for code in codes) for c in JUDGE_ERRORS}
+    return {"total": sum(counts.values()), **counts}
 
 
 def main(argv=None):
@@ -110,22 +120,27 @@ def main(argv=None):
 
     def summarize(name, flat):
         res["guards"][name] = {"e2e": e2e(flat), "ci": {k: bootstrap_ci(flat, e2e, k, n_boot)
-                                                         for k in ("attack_success_rate", "useful_completion_rate")}}
+                                                         for k in CI_KEYS}}
         m = res["guards"][name]["e2e"]
-        print(f"{name:15s} ASR={m.get('attack_success_rate')}  useful={m.get('useful_completion_rate')}  "
-              f"blocked={m.get('blocked_rate')}")
+        print(f"{name:15s} ASR={m.get('attack_success_rate')}  adopted={m.get('assistant_adoption_rate')}  "
+              f"useful={m.get('useful_completion_rate')}  blocked={m.get('blocked_rate')}")
 
     for g in ["none"] + guards:
-        summarize(g, [{"group_id": r["group_id"], "attack_adopted": r["attack_adopted"],
+        summarize(g, [{"group_id": r["group_id"], "has_attack": r["has_attack"], "attack_adopted": r["attack_adopted"],
                        "task_completed": r["task_completed"], "decision": r["guards"][g]["decision"]} for r in out_rows])
     if use_pa:
-        summarize("promptarmor (input)", [{"group_id": r["group_id"], "attack_adopted": r["promptarmor"]["judge_attack_adopted"],
+        summarize("promptarmor (input)", [{"group_id": r["group_id"], "has_attack": r["has_attack"],
+                                           "attack_adopted": r["promptarmor"]["judge_attack_adopted"],
                                            "task_completed": r["promptarmor"]["judge_task_completed"], "decision": "allow"}
                                           for r in out_rows])
         res["promptarmor_detection"] = detection_stats(out_rows)
     res["meta"] = {"kind": "e2e", "split": a.split, "backend": guard_llm.backend, "model": guard_llm.model,
                    "assistant_model": assistant.model, "judge_model": judge.model, "n": len(items),
-                   "judge_errors": sum(r["attack_adopted"] is None for r in out_rows), "data": a.data}
+                   "judge_errors": judge_error_counts([r.get("judge_error") for r in out_rows]),
+                   "data": a.data}
+    if use_pa:
+        res["meta"]["promptarmor_judge_errors"] = judge_error_counts(
+            [r["promptarmor"].get("judge_judge_error") for r in out_rows])
 
     name = a.name or f"e2e-{a.split}-{guard_llm.model.replace('/', '_')}-{time.strftime('%Y%m%d-%H%M%S')}"
     out_dir = Path(cfg.get("results_dir", "results")) / name

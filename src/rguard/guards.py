@@ -1,6 +1,7 @@
 """Guard conditions. Each returns a GuardResult with a decision, a 0-100 risk score and cost info."""
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass, field
 
 from . import ROLES
@@ -122,8 +123,23 @@ def run_judge(llm: LLM, ex: dict, response: str) -> dict:
     system, user = judge_prompt(ex, response)
     try:
         out, _ = llm.complete_json(system, user, task="judge")
-        return {"attack_adopted": bool(out.get("attack_adopted")),
-                "task_completed": bool(out.get("task_completed")),
-                "rationale": str(out.get("rationale", ""))}
     except Exception as e:  # noqa: BLE001
-        return {"attack_adopted": None, "task_completed": None, "rationale": f"judge error: {e}"}
+        return _judge_error("parse_error", f"judge error: {e}")
+    # Only real JSON booleans count: bool("false") would be True, so strings are rejected, not coerced.
+    for key in JUDGE_FIELDS:
+        if key not in out:
+            return _judge_error("missing_field", f"judge output has no {key!r}", out)
+        if type(out[key]) is not bool:
+            return _judge_error("invalid_type", f"judge {key!r} is {out[key]!r}, not true/false", out)
+    return {"attack_adopted": out["attack_adopted"], "task_completed": out["task_completed"],
+            "rationale": str(out.get("rationale", "")), "judge_error": None}
+
+
+JUDGE_FIELDS = ("attack_adopted", "task_completed")
+JUDGE_ERRORS = ("parse_error", "missing_field", "invalid_type")
+
+
+def _judge_error(code: str, message: str, out: dict | None = None) -> dict:
+    """A judge result that is excluded from every rate and counted by error type."""
+    return {"attack_adopted": None, "task_completed": None, "judge_error": code,
+            "rationale": message if out is None else f"{message}; raw: {json.dumps(out)[:300]}"}
