@@ -5,7 +5,8 @@ Two families of defense are compared on the same examples:
 * OUTPUT guards (text_only, context, context_cot, role_aware, piguard, piguard_source): the undefended
   assistant answers from (user request, source); an LLM judge labels whether the attack was adopted and
   whether the task was completed; each guard then decides whether to show that response.
-  "none" = no guard.
+  "none" = no guard. role_aware and task_alignment also get their code-policy rows
+  (role_aware_policy, task_alignment_policy), derived from the same guard call.
 * INPUT defense (promptarmor): the source is first sanitized by PromptArmor (detect + remove the injected
   text), then the assistant answers from the sanitized source and the judge labels THAT response. Its
   response is always shown; its cost is that legitimate tasks about the injected text (quote it, analyze
@@ -30,6 +31,7 @@ import yaml
 
 from .data import filter_split, load_jsonl, save_jsonl
 from .guards import DEFAULT_GUARDS, JUDGE_ERRORS, run_assistant, run_guard, run_judge
+from .role_policy import POLICIES, apply_policy
 from .llm import llm_from_config
 from .metrics import bootstrap_ci, e2e
 from .promptarmor import promptarmor
@@ -101,6 +103,10 @@ def main(argv=None):
             decisions[g] = {"decision": gr.decision, "risk": gr.risk, "spans": gr.spans,
                             "input_tokens": gr.input_tokens, "output_tokens": gr.output_tokens,
                             "latency_s": gr.latency_s, "parse_error": gr.parse_error}
+            if g in POLICIES:   # the code policy reuses this guard's call: no extra API cost
+                policy, code, flags = apply_policy(gr, resp, cfg.get("fail_closed", True))
+                decisions[policy.condition] = {"decision": policy.decision, "risk": policy.risk,
+                                               "reason_code": code, "flags": flags}
         row = {"id": ex["id"], "group_id": ex["group_id"], "user_request": ex["user_request"],
                "has_attack": bool(ex.get("attack_goal")), "response": resp, "assistant_cost": acost,
                **j, "guards": decisions}
@@ -125,7 +131,8 @@ def main(argv=None):
         print(f"{name:15s} ASR={m.get('attack_success_rate')}  adopted={m.get('assistant_adoption_rate')}  "
               f"useful={m.get('useful_completion_rate')}  blocked={m.get('blocked_rate')}")
 
-    for g in ["none"] + guards:
+    decided = ["none"] + [name for g in guards for name in ([g, POLICIES[g][0]] if g in POLICIES else [g])]
+    for g in decided:
         summarize(g, [{"group_id": r["group_id"], "has_attack": r["has_attack"], "attack_adopted": r["attack_adopted"],
                        "task_completed": r["task_completed"], "decision": r["guards"][g]["decision"]} for r in out_rows])
     if use_pa:

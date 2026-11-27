@@ -146,6 +146,9 @@ reusing its model call (no extra API calls):
 | `role_aware_policy` | `role_aware` | block an adopted instruction that is unauthorized or harmful; quotation and reporting pass |
 | `task_alignment_policy` | `task_alignment` | no role available, so every cited instruction counts as adopted: block any unauthorized or harmful one |
 
+`run_e2e` adds the same two policy rows automatically whenever `role_aware` or `task_alignment` is
+among its guards, again from the same guard call.
+
 The two rules see the same kind of evidence and differ only in the role label, so the report's
 "What the role label adds" table (`role_aware_policy − task_alignment_policy`, paired 95% CI) isolates
 the role's contribution when a rule makes the decision. With draft gold evidence, the role-free rule

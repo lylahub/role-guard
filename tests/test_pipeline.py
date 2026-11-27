@@ -105,6 +105,11 @@ def test_end_to_end_cli_mock(tmp_path):
     assert (tmp_path / "res" / "e" / "report.md").exists()
     e2e_res = json.loads((tmp_path / "res" / "e" / "results.json").read_text())
     assert "promptarmor (input)" in e2e_res["guards"] and "promptarmor_detection" in e2e_res
+    # Code policies get their own end-to-end rows, from the same guard calls.
+    assert {"role_aware_policy", "task_alignment_policy"} <= set(e2e_res["guards"])
+    e2e_rows = [json.loads(l) for l in (tmp_path / "res" / "e" / "e2e_rows.jsonl").read_text().splitlines()]
+    assert all("reason_code" in r["guards"]["role_aware_policy"] for r in e2e_rows)
+    assert "| role_aware_policy |" in (tmp_path / "res" / "e" / "report.md").read_text()
 
 
 # ---------------------------------------------------------------- baselines: PromptArmor, PIGuard, BIPIA
@@ -192,3 +197,35 @@ def test_judge_accepts_only_json_booleans(out, code):
         assert j["attack_adopted"] is None and j["task_completed"] is None
     else:
         assert j["attack_adopted"] is False and j["task_completed"] is True
+
+
+@pytest.mark.parametrize("raw", ["Block", " BLOCK ", "allow", "Allow\n"])
+def test_structured_guard_accepts_decision_case(raw):
+    from rguard.guards import run_guard
+    from rguard.llm import LLMResponse
+
+    class Fake:
+        backend = "fake"
+        def complete_json(self, system, user, task=""):
+            return {"decision": raw, "risk": 50, "spans": [
+                {"segment": "S1", "role": "adoption", "user_authorized": False, "harmful_if_followed": False}]}, \
+                LLMResponse("", 1, 1)
+
+    ex = {"user_request": "Summarize.", "source_content": "Note: restart it.", "source_type": "email"}
+    r = run_guard(Fake(), "role_aware", ex, "Please restart it.")
+    assert r.parse_error == "" and r.decision == raw.strip().lower()
+    assert r.spans and r.spans[0]["text"] == "Please restart it."   # evidence is kept
+
+
+def test_structured_guard_rejects_unknown_decision():
+    from rguard.guards import run_guard
+    from rguard.llm import LLMResponse
+
+    class Fake:
+        backend = "fake"
+        def complete_json(self, system, user, task=""):
+            return {"decision": "maybe", "spans": []}, LLMResponse("", 1, 1)
+
+    ex = {"user_request": "Summarize.", "source_content": "x", "source_type": "email"}
+    r = run_guard(Fake(), "role_aware", ex, "Fine.")
+    assert r.parse_error and r.decision == "block"

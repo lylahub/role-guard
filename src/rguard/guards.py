@@ -72,8 +72,12 @@ def run_guard(llm: LLM, condition: str, ex: dict, response: str, fail_closed: bo
     try:
         out, resp = llm.complete_json(system, user, task=f"guard:{condition}")
         if condition in ("task_alignment", "role_aware"):
-            if out.get("decision") not in ("allow", "block"):
-                raise ValueError("Missing or invalid structured guard decision")
+            # Accept "Block" or " allow " like the other guards do; only a missing or unknown
+            # decision is an error (it would also discard the cited evidence the code policies use).
+            decision = str(out.get("decision") or "").strip().lower()
+            if decision not in ("allow", "block"):
+                raise ValueError(f"Missing or invalid structured guard decision: {out.get('decision')!r}")
+            out["decision"] = decision
             spans = out.get("spans")
             if not isinstance(spans, list) or any(not isinstance(s, dict) for s in spans):
                 raise ValueError("Expected a list of span objects")

@@ -158,3 +158,17 @@ def test_task_alignment_policy_ignores_roles():
     assert apply_policy(GuardResult("task_alignment", "allow", 10, spans=[harmful_only]), text)[1] == \
         "harmful_instruction"
     assert decide([ok], text, use_role=False)[0] == "allow"
+
+
+def test_report_renders_old_flat_policy_diagnostics(tmp_path):
+    """results.json written before task_alignment_policy had one flat policy_diagnostics dict."""
+    from rguard.report import render_fixed
+    config = yaml.safe_load((ROOT / "configs" / "default.yaml").read_text())
+    config.update(results_dir=str(tmp_path), cache_dir=None, n_bootstrap=10)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.safe_dump(config))
+    run_guards.main(["--config", str(config_path), "--data", str(CONTRAST), "--split", "dev", "--mock",
+                     "--guards", "role_aware", "--compare-role-policy", "--name", "old"])
+    res = json.loads((tmp_path / "old" / "results.json").read_text())
+    res["policy_diagnostics"] = res["policy_diagnostics"]["role_aware_policy"]   # old flat format
+    assert "## role_aware_policy vs. role_aware model decision" in render_fixed(res)

@@ -21,6 +21,16 @@ def _ci(ci, pct=True):
     return f" [{_f(ci[0], pct)}, {_f(ci[1], pct)}]"
 
 
+def _policy_diagnostics(res: dict) -> dict:
+    """Policy diagnostics keyed by policy name.
+
+    Results written before task_alignment_policy existed store one flat dict for role_aware_policy;
+    read those as {"role_aware_policy": ...} so old results.json files still render.
+    """
+    diag = res.get("policy_diagnostics") or {}
+    return {"role_aware_policy": diag} if "disagreements" in diag else diag
+
+
 def render_fixed(res: dict) -> str:
     L = [f"# Guard evaluation on fixed responses ({res['meta']['split']} split)", "",
          f"Backend: `{res['meta']['backend']}` / model `{res['meta']['model']}` · examples: {res['meta']['n']} · "
@@ -72,7 +82,7 @@ def render_fixed(res: dict) -> str:
               "task_alignment_policy has no role, so it treats every cited instruction as adopted.", "",
               "| Δ miss rate | Δ FPR | Δ accuracy |", "|---|---|---|",
               f"| {cell('attack_miss_rate')} | {cell('false_positive_rate')} | {cell('accuracy')} |"]
-    for policy_name, diag in (res.get("policy_diagnostics") or {}).items():
+    for policy_name, diag in _policy_diagnostics(res).items():
         source = policy_name.removesuffix("_policy")
         L += ["", f"## {policy_name} vs. {source} model decision", "",
               f"- Decisions changed: {diag['disagreements']}",
