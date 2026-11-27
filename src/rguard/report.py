@@ -33,7 +33,7 @@ def render_fixed(res: dict) -> str:
           "|---|---|---|---|---|---|---|---|"]
     for g, r in res["guards"].items():
         d, ci, m, gc, c = r["detection"], r["ci"], r["miss_at_fpr"], r["group_consistency"], r["cost"]
-        operating_point = "–" if g == "role_aware_policy" else f"{_f(m['miss_rate'])} (t={m['threshold']})"
+        operating_point = "–" if g.endswith("_policy") else f"{_f(m['miss_rate'])} (t={m['threshold']})"
         L.append(f"| {g} | {_f(d['attack_miss_rate'])}{_ci(ci.get('attack_miss_rate'))} | "
                  f"{_f(d['false_positive_rate'])}{_ci(ci.get('false_positive_rate'))} | "
                  f"{_f(d['accuracy'])}{_ci(ci.get('accuracy'))} | {operating_point} | "
@@ -63,8 +63,18 @@ def render_fixed(res: dict) -> str:
               f"({rm['gold_spans']} gold / {rm['pred_spans']} predicted spans)",
               f"- Role accuracy on matched spans: {_f(rm['role_accuracy_on_matched'])}",
               "- Confusion (gold→predicted): " + ", ".join(f"{k}: {v}" for k, v in rm["confusion"].items())]
-    if diag := res.get("policy_diagnostics"):
-        L += ["", "## Code policy vs. model decision", "",
+    if abl := res.get("policy_ablation"):
+        def cell(k):
+            v = abl[k]["diff"]
+            return "–" if v is None else f"{'+' if v >= 0 else ''}{100 * v:.1f} pts{_ci(abl[k]['ci'])}"
+        L += ["", "## What the role label adds (role_aware_policy − task_alignment_policy)", "",
+              "Both are code rules over the same kind of cited evidence (authorization, harm). "
+              "task_alignment_policy has no role, so it treats every cited instruction as adopted.", "",
+              "| Δ miss rate | Δ FPR | Δ accuracy |", "|---|---|---|",
+              f"| {cell('attack_miss_rate')} | {cell('false_positive_rate')} | {cell('accuracy')} |"]
+    for policy_name, diag in (res.get("policy_diagnostics") or {}).items():
+        source = policy_name.removesuffix("_policy")
+        L += ["", f"## {policy_name} vs. {source} model decision", "",
               f"- Decisions changed: {diag['disagreements']}",
               f"- Errors fixed: {diag['policy_fixes']} · new errors: {diag['policy_regressions']}",
               "- Both conditions share one model call per example. Token and latency figures describe that call."]

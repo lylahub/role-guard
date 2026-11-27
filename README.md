@@ -130,6 +130,19 @@ python -m rguard.run_guards --data data/examples.jsonl --data data/role_policy_e
   --split dev --guards context,context_cot,task_alignment,role_aware --compare-role-policy --mock --name role-policy-smoke
 ```
 
+`--compare-role-policy` derives a code-policy decision from every structured guard in `--guards`,
+reusing its model call (no extra API calls):
+
+| Policy | From | Rule |
+|---|---|---|
+| `role_aware_policy` | `role_aware` | block an adopted instruction that is unauthorized or harmful; quotation and reporting pass |
+| `task_alignment_policy` | `task_alignment` | no role available, so every cited instruction counts as adopted: block any unauthorized or harmful one |
+
+The two rules see the same kind of evidence and differ only in the role label, so the report's
+"What the role label adds" table (`role_aware_policy − task_alignment_policy`, paired 95% CI) isolates
+the role's contribution when a rule makes the decision. With draft gold evidence, the role-free rule
+shows what perfect evidence achieves without roles.
+
 The task-alignment baseline uses the same model, inputs, policy, span-extraction instruction,
 and per-span authorization and harm fields as the role-aware guard. It checks each span against
 the user task without requiring a communicative role label. Compare it with the model-driven

@@ -23,7 +23,7 @@ from .llm import llm_from_config
 from .metrics import (bootstrap_ci, by_case_type, cost, detection, group_consistency, miss_at_fpr,
                       paired_difference_ci, role_metrics)
 from .report import render_fixed
-from .role_policy import FLAGS, REASON_CODES, apply_policy, decide
+from .role_policy import FLAGS, POLICIES, REASON_CODES, apply_policy, decide
 
 
 def evaluate(preds_by_guard: dict[str, list[dict]], n_boot: int, target_fpr: float) -> dict:
@@ -53,48 +53,58 @@ def evaluate(preds_by_guard: dict[str, list[dict]], n_boot: int, target_fpr: flo
                     "diff": None if da is None or db is None else da - db,
                     "ci": paired_difference_ci(preds_by_guard["role_aware"], preds_by_guard[b], detection, k, n_boot)}
     result = {"guards": out, "comparisons": comparisons}
-    if "role_aware_policy" in preds_by_guard:
-        model = preds_by_guard["role_aware"]
-        policy = preds_by_guard["role_aware_policy"]
-        paired = list(zip(model, policy, strict=True))
-        diagnostic = {
-            "disagreements": sum(a["decision"] != b["decision"] for a, b in paired),
-            "policy_fixes": sum(a["decision"] != a["label"] == b["decision"] for a, b in paired),
-            "policy_regressions": sum(a["decision"] == a["label"] != b["decision"] for a, b in paired),
-        }
-        annotated = [b for b in policy if b["gold_policy_decision"] is not None]
-        if annotated:
-            diagnostic["oracle_evidence"] = {
-                "n": len(annotated),
-                "policy_correct": sum(b["decision"] == b["label"] for b in annotated),
-                "oracle_correct": sum(b["gold_policy_decision"] == b["label"] for b in annotated),
-                "oracle_fixes": sum(
-                    b["decision"] != b["label"] == b["gold_policy_decision"] for b in annotated
-                ),
-                "oracle_regressions": sum(
-                    b["decision"] == b["label"] != b["gold_policy_decision"] for b in annotated
-                ),
-            }
-        diagnostic["reason_codes"] = {
-            code: {label: sum(p["reason_code"] == code and p["label"] == label for p in policy)
-                   for label in ("allow", "block")}
-            for code in REASON_CODES if any(p["reason_code"] == code for p in policy)
-        }
-        diagnostic["flags"] = {
-            flag: {f"{decision}/{label}": sum(flag in p["flags"] and p["decision"] == decision
-                                              and p["label"] == label for p in policy)
-                   for decision in ("allow", "block") for label in ("allow", "block")}
-            for flag in FLAGS if any(flag in p["flags"] for p in policy)
-        }
-        flagged = [p for p in policy if p["flagged_allow"]]
-        allowed_attacks = sum(p["decision"] == "allow" and p["label"] == "block" for p in policy)
-        diagnostic["flagged_allow"] = {
-            "n": len(flagged),
-            "attacks": sum(p["label"] == "block" for p in flagged),
-            "allowed_attacks": allowed_attacks,
-        }
-        result["policy_diagnostics"] = diagnostic
+    diagnostics = {}
+    for source, (name, _) in POLICIES.items():
+        if name in preds_by_guard:
+            diagnostics[name] = _policy_diagnostic(preds_by_guard[source], preds_by_guard[name])
+    if diagnostics:
+        result["policy_diagnostics"] = diagnostics
+    if {"role_aware_policy", "task_alignment_policy"} <= preds_by_guard.keys():
+        # Same kind of evidence and the same rule; the only difference is the role label.
+        a, b = preds_by_guard["role_aware_policy"], preds_by_guard["task_alignment_policy"]
+        result["policy_ablation"] = {
+            k: {"diff": None if detection(a)[k] is None or detection(b)[k] is None
+                else detection(a)[k] - detection(b)[k],
+                "ci": paired_difference_ci(a, b, detection, k, n_boot)}
+            for k in ("attack_miss_rate", "false_positive_rate", "accuracy")}
     return result
+
+
+def _policy_diagnostic(model: list[dict], policy: list[dict]) -> dict:
+    """How a code policy's decisions relate to the model verdict it was derived from."""
+    paired = list(zip(model, policy, strict=True))
+    diagnostic = {
+        "disagreements": sum(a["decision"] != b["decision"] for a, b in paired),
+        "policy_fixes": sum(a["decision"] != a["label"] == b["decision"] for a, b in paired),
+        "policy_regressions": sum(a["decision"] == a["label"] != b["decision"] for a, b in paired),
+    }
+    annotated = [b for b in policy if b["gold_policy_decision"] is not None]
+    if annotated:
+        diagnostic["oracle_evidence"] = {
+            "n": len(annotated),
+            "policy_correct": sum(b["decision"] == b["label"] for b in annotated),
+            "oracle_correct": sum(b["gold_policy_decision"] == b["label"] for b in annotated),
+            "oracle_fixes": sum(b["decision"] != b["label"] == b["gold_policy_decision"] for b in annotated),
+            "oracle_regressions": sum(b["decision"] == b["label"] != b["gold_policy_decision"] for b in annotated),
+        }
+    diagnostic["reason_codes"] = {
+        code: {label: sum(p["reason_code"] == code and p["label"] == label for p in policy)
+               for label in ("allow", "block")}
+        for code in REASON_CODES if any(p["reason_code"] == code for p in policy)
+    }
+    diagnostic["flags"] = {
+        flag: {f"{decision}/{label}": sum(flag in p["flags"] and p["decision"] == decision
+                                          and p["label"] == label for p in policy)
+               for decision in ("allow", "block") for label in ("allow", "block")}
+        for flag in FLAGS if any(flag in p["flags"] for p in policy)
+    }
+    flagged = [p for p in policy if p["flagged_allow"]]
+    diagnostic["flagged_allow"] = {
+        "n": len(flagged),
+        "attacks": sum(p["label"] == "block" for p in flagged),
+        "allowed_attacks": sum(p["decision"] == "allow" and p["label"] == "block" for p in policy),
+    }
+    return diagnostic
 
 
 def main(argv=None):
@@ -103,7 +113,8 @@ def main(argv=None):
     ap.add_argument("--data", required=True, action="append",
                     help="JSONL dataset path, repeat to evaluate several files as one batch")
     ap.add_argument("--compare-role-policy", action="store_true",
-                    help="derive a code-policy decision from the same role_aware prediction")
+                    help="also derive code-policy decisions from the same role_aware / task_alignment "
+                         "calls (role_aware_policy, task_alignment_policy)")
     ap.add_argument("--split", default="dev", choices=["dev", "test", "all"])
     ap.add_argument("--guards", default=DEFAULT_GUARDS,
                     help="comma list; PIGuard conditions need `pip install -e .[piguard]`")
@@ -125,8 +136,8 @@ def main(argv=None):
 
     llm = llm_from_config(cfg, "guard", mock=a.mock)
     guards = [g.strip() for g in a.guards.split(",") if g.strip()]
-    if a.compare_role_policy and "role_aware" not in guards:
-        ap.error("--compare-role-policy requires role_aware in --guards")
+    if a.compare_role_policy and not POLICIES.keys() & set(guards):
+        ap.error("--compare-role-policy requires role_aware and/or task_alignment in --guards")
     workers = 1 if llm.backend == "mock" else cfg.get("concurrency", 4)
 
     preds_by_guard: dict[str, list[dict]] = {}
@@ -140,12 +151,12 @@ def main(argv=None):
                       "dataset": ex.get("dataset", "main"), "contrast": ex.get("contrast"),
                       "variant": ex.get("variant")}
             model_pred = {**common, **r.to_dict()}
-            if g != "role_aware" or not a.compare_role_policy:
+            if g not in POLICIES or not a.compare_role_policy:
                 return model_pred, None
             policy, reason_code, flags = apply_policy(r, ex["candidate_response"], cfg.get("fail_closed", True))
             oracle = None
             if "policy_gold_spans" in ex:
-                oracle, _ = decide(ex["policy_gold_spans"], ex["candidate_response"])
+                oracle, _ = decide(ex["policy_gold_spans"], ex["candidate_response"], POLICIES[g][1])
             return model_pred, {**common, **policy.to_dict(), "gold_policy_decision": oracle,
                                 "reason_code": reason_code, "flags": flags,
                                 "flagged_allow": policy.decision == "allow" and bool(flags)}
@@ -154,9 +165,9 @@ def main(argv=None):
         preds = [model for model, _ in batch]
         preds_by_guard[g] = preds
         all_preds += preds
-        if g == "role_aware" and a.compare_role_policy:
+        if g in POLICIES and a.compare_role_policy:
             policy_preds = [policy for _, policy in batch]
-            preds_by_guard["role_aware_policy"] = policy_preds
+            preds_by_guard[POLICIES[g][0]] = policy_preds
             all_preds += policy_preds
         d = detection(preds)
         print(f"{g:12s} miss={d['attack_miss_rate']}  fpr={d['false_positive_rate']}  acc={d['accuracy']}")
