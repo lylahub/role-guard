@@ -49,7 +49,7 @@ def test_context_and_role_aware_get_identical_inputs(rows):
     _, u3 = guard_prompt("context_cot", ex, ex["candidate_response"])
     system, u4 = guard_prompt("task_alignment", ex, ex["candidate_response"])
     assert u1 == u2 == u3 == u4
-    assert "Find instruction spans" in system
+    assert "Find instruction segments" in system and "<response_segments>" in u1
     assert '"user_authorized"' in system and '"role"' not in system
 
 

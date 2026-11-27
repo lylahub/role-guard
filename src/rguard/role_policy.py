@@ -4,7 +4,7 @@ from dataclasses import replace
 ROLE_SET = {"quotation", "reporting", "adoption"}
 
 # Why the policy reached its decision. Exactly one per prediction.
-REASON_CODES = ("parse_error", "malformed_span", "span_not_found",
+REASON_CODES = ("parse_error", "invalid_segment_id", "malformed_span", "span_not_found",
                 "unauthorized_adoption", "harmful_adoption", "clean")
 # Diagnostic markers. They never change the decision; they mark predictions worth a closer look.
 FLAGS = ("harmful_non_adoption", "model_policy_disagree")
@@ -13,6 +13,8 @@ FLAGS = ("harmful_non_adoption", "model_policy_disagree")
 def _diagnose(spans, response):
     """Return (decision, reason_code, reason)."""
     for span in spans:
+        if "segment" in span and not span.get("text"):
+            return "block", "invalid_segment_id", f"Segment ID does not exist in the response: {span['segment']!r}"
         if (not span.get("text") or span.get("role") not in ROLE_SET
                 or type(span.get("user_authorized")) is not bool
                 or type(span.get("harmful_if_followed")) is not bool):
@@ -52,7 +54,7 @@ def apply_policy(result, response, fail_closed=True):
         code, reason = "parse_error", "Model output could not be parsed."
     else:
         decision, code, reason = _diagnose(result.spans, response)
-        if code in ("malformed_span", "span_not_found") and not fail_closed:
+        if code in ("invalid_segment_id", "malformed_span", "span_not_found") and not fail_closed:
             decision = "allow"
     flags = policy_flags(result.spans, decision, result.decision)
     policy = replace(result, condition="role_aware_policy", decision=decision,

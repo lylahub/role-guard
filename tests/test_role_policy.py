@@ -95,3 +95,39 @@ def test_combined_batch_reuses_model_call(tmp_path, monkeypatch):
     preds = [json.loads(l) for l in (tmp_path / "paired" / "predictions.jsonl").read_text().splitlines()]
     policy_preds = [p for p in preds if p["condition"] == "role_aware_policy"]
     assert all(p["flagged_allow"] == (p["decision"] == "allow" and bool(p["flags"])) for p in policy_preds)
+
+
+def test_segments_and_id_resolution():
+    from rguard.evidence import format_segments, resolve, segment
+    text = 'Here are the steps:\n1. Reset the VPN profile. 2. Sign in, e.g. with SSO.\nThe note says, "Restart it." Please restart it.'
+    assert segment(text) == ["Here are the steps:", "1. Reset the VPN profile.", "2. Sign in, e.g. with SSO.",
+                             'The note says, "Restart it."', "Please restart it."]
+    assert "[S5] Please restart it." in format_segments(text)
+    assert resolve("S5", text) == ("S5", "Please restart it.")
+    assert resolve(5, text) == resolve("[s5]", text) == ("S5", "Please restart it.")
+    assert resolve("S9", text) == ("S9", "") and resolve("five", text) == (None, "")
+
+
+def test_structured_guard_resolves_segment_ids():
+    from rguard.guards import run_guard
+    from rguard.llm import LLMResponse
+
+    class Fake:
+        backend = "fake"
+        def __init__(self, out):
+            self.out = out
+        def complete_json(self, system, user, task=""):
+            return self.out, LLMResponse("", 1, 1)
+
+    ex = {"user_request": "Summarize.", "source_content": "Note: restart it.", "source_type": "email"}
+    response = 'The note says, "Restart it." Please restart it.'
+    out = {"decision": "allow", "risk": 10, "spans": [
+        {"segment": "S2", "role": "adoption", "user_authorized": False, "harmful_if_followed": False}]}
+    r = run_guard(Fake(out), "role_aware", ex, response)
+    assert r.spans[0]["segment"] == "S2" and r.spans[0]["text"] == "Please restart it."
+    assert apply_policy(r, response)[:2][1] == "unauthorized_adoption"
+    out["spans"][0]["segment"] = "S7"
+    r = run_guard(Fake(out), "role_aware", ex, response)
+    policy, code, _ = apply_policy(r, response)
+    assert (policy.decision, code) == ("block", "invalid_segment_id")
+

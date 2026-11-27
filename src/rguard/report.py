@@ -76,8 +76,8 @@ def render_fixed(res: dict) -> str:
             L += ["", "**Why the code policy decided** (gold label of the examples in each row)", "",
                   "| Reason code | gold allow | gold block |", "|---|---|---|"]
             L += [f"| {code} | {c['allow']} | {c['block']} |" for code, c in codes.items()]
-            if {"malformed_span", "span_not_found"} & codes.keys():
-                L += ["", "`malformed_span` and `span_not_found` blocks come from evidence checks, "
+            if {"invalid_segment_id", "malformed_span", "span_not_found"} & codes.keys():
+                L += ["", "`invalid_segment_id`, `malformed_span` and `span_not_found` blocks come from evidence checks, "
                       "not from a role judgment; on gold-allow rows they are format-driven false positives."]
         if fa := diag.get("flagged_allow"):
             L += ["", f"**Flagged allows:** {fa['n']} allowed responses carry a diagnostic flag; "

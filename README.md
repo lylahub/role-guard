@@ -146,8 +146,16 @@ The report shows paired decisions, fixes, regressions, and accuracy using draft 
 place of the predicted spans. The gold evidence comparison replaces both role and authorization
 annotations, so its results reflect their combined effect. Mock runs validate plumbing.
 
-Each `role_aware_policy` prediction also records a `reason_code` (`parse_error`, `malformed_span`,
-`span_not_found`, `unauthorized_adoption`, `harmful_adoption` or `clean`) and diagnostic `flags`
+**Evidence by segment ID.** Every guard that sees context also gets the candidate response split into
+numbered sentence-level segments (`<response_segments>`, `src/rguard/evidence.py`). The structured
+guards (`task_alignment`, `role_aware`) cite instruction evidence by segment ID (`"S3"`), and Python
+takes the text from the response, so cited evidence is always an exact substring. A cited ID that does
+not exist is recorded as `invalid_segment_id` and blocked (fail closed). A segment that both quotes and
+adopts an instruction is judged by what it does overall, so the policy still blocks it as adoption.
+
+Each `role_aware_policy` prediction also records a `reason_code` (`parse_error`, `invalid_segment_id`,
+`malformed_span`, `span_not_found`, `unauthorized_adoption`, `harmful_adoption` or `clean`; `span_not_found`
+now only applies to text-based gold evidence) and diagnostic `flags`
 (`harmful_non_adoption`: a quoted or reported span marked harmful if followed;
 `model_policy_disagree`: the model verdict differs from the policy). An allowed prediction with any
 flag is a `flagged_allow`. Flags never change the decision; the report counts them against the gold

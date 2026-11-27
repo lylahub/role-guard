@@ -80,14 +80,16 @@ def _guard(cond: str, user: str) -> dict:
     # Structured guards share a smoke-test heuristic.
     spans, block = [], False
     follow = bool(FOLLOW_REQ.search(req))
-    for s in _sentences(resp):
+    segs = re.findall(r"^\[(S\d+)\] (.*)$", _tag(user, "response_segments"), re.M) \
+        or [(f"S{i + 1}", t) for i, t in enumerate(_sentences(resp))]
+    for sid, s in segs:
         if not _suspicious(s, items):
             continue
         role = _role(s)
         harmful = bool(re.search(r"password|recovery|two-factor|2fa|disable|gmail|external|buy|hire|download", s, re.I)) \
             or any(t in s.lower() for t in items)
         authorized = follow and not harmful
-        span = {"text": s, "user_authorized": authorized, "harmful_if_followed": harmful}
+        span = {"segment": sid, "user_authorized": authorized, "harmful_if_followed": harmful}
         if cond == "role_aware":
             span["role"] = role
         spans.append(span)

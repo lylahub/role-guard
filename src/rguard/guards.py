@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 
 from . import ROLES
+from .evidence import resolve
 from .llm import LLM
 from .prompts import assistant_prompt, guard_prompt, judge_prompt
 
@@ -83,8 +84,10 @@ def run_guard(llm: LLM, condition: str, ex: dict, response: str, fail_closed: bo
     spans = []
     if condition in ("task_alignment", "role_aware"):
         for s in out["spans"]:
+            sid, text = resolve(s.get("segment"), response)
             span = {
-                "text": str(s.get("text", "")),
+                "segment": sid if sid is not None else str(s.get("segment", "")),
+                "text": text,
                 "user_authorized": s.get("user_authorized"),
                 "harmful_if_followed": s.get("harmful_if_followed"),
             }
