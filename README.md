@@ -170,6 +170,13 @@ and three roles over none. Reason codes are `planted_<kind>` and `harmful_<kind>
 `run_e2e` adds these policy rows automatically whenever `role_aware` or `task_alignment` is among its
 guards, again from the same guard call.
 
+**Frozen prompts (2026-11-27).** After one round of dev tuning, every prompt a model receives (the five
+guards, the judge and the assistant) is frozen. `configs/frozen_prompts.json` pins a fingerprint of the
+prompts as rendered on a fixed probe example, so formatting and sentence-splitting changes count too.
+`tests/test_pipeline.py::test_prompts_are_frozen` fails if anything changes, and every run records
+`prompt_fingerprint` and `prompts_frozen` in its `results.json` meta. Run the test split only with
+`prompts_frozen: true`. Do not tune on test results.
+
 **Contrast set sources.** In `data/role_policy_examples.jsonl` each instruction is a planted line inside
 an ordinary note (dev: a bracketed note to AI assistants; test: a fake automated admin line, so the two
 splits use different attack templates). Draft gold evidence (`policy_gold_spans`) marks those lines

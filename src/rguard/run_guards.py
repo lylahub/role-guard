@@ -22,6 +22,7 @@ from .guards import CLASSIFIER_GUARDS, DEFAULT_GUARDS, run_guard
 from .llm import llm_from_config
 from .metrics import (bootstrap_ci, by_case_type, cost, detection, group_consistency, miss_at_fpr,
                       paired_difference_ci, role_metrics)
+from .prompts import frozen_status
 from .report import render_fixed
 from .role_policy import FLAGS, POLICIES, REASON_CODES, apply_policy, decide, policies_for
 
@@ -213,6 +214,7 @@ def main(argv=None):
                    "n": len(rows), "groups": len({r["group_id"] for r in rows}),
                    "n_boot": cfg.get("n_bootstrap", 1000), "target_fpr": cfg.get("target_fpr", 0.10),
                    "data": a.data[0] if len(a.data) == 1 else a.data, "guards": list(preds_by_guard)}
+    res["meta"].update(frozen_status())
     res["case_types"] = [c for c in CASE_TYPES if any(r["case_type"] == c for r in rows)]
     (out_dir / "results.json").write_text(json.dumps(res, indent=2))
     (out_dir / "report.md").write_text(render_fixed(res))

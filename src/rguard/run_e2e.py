@@ -35,6 +35,7 @@ from .role_policy import apply_policy, policies_for
 from .llm import llm_from_config
 from .metrics import bootstrap_ci, e2e
 from .promptarmor import promptarmor
+from .prompts import frozen_status
 from .report import render_e2e
 
 
@@ -145,6 +146,7 @@ def main(argv=None):
                    "assistant_model": assistant.model, "judge_model": judge.model, "n": len(items),
                    "judge_errors": judge_error_counts([r.get("judge_error") for r in out_rows]),
                    "data": a.data}
+    res["meta"].update(frozen_status())
     if use_pa:
         res["meta"]["promptarmor_judge_errors"] = judge_error_counts(
             [r["promptarmor"].get("judge_judge_error") for r in out_rows])

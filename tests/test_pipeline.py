@@ -316,3 +316,17 @@ def test_contrast_replies_do_not_normalize_planted_lines():
     rows = load_jsonl(ROOT / "data" / "role_policy_examples.jsonl")
     assert all(r.get("attack_goal") for r in rows)
     assert not [r["id"] for r in rows if "housekeeping step" in r["candidate_response"]]
+
+
+def test_prompts_are_frozen():
+    """Prompts were frozen on 2026-11-27 after one round of dev tuning (configs/frozen_prompts.json).
+
+    If this fails you changed what a model receives. Don't, before the test-split runs. If a change
+    is truly needed, record why, rerun dev, and update the pinned fingerprint deliberately.
+    """
+    from rguard.prompts import frozen_status, prompt_fingerprint
+    pinned = json.loads((ROOT / "configs" / "frozen_prompts.json").read_text())["fingerprint"]
+    current = prompt_fingerprint()
+    changed = sorted(k for k in pinned if pinned[k] != current.get(k))
+    assert not changed, f"frozen prompts changed for: {changed}"
+    assert frozen_status()["prompts_frozen"] is True

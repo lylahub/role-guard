@@ -1,0 +1,14 @@
+{
+  "frozen": "2026-11-27",
+  "commit_before_freeze": "de727ab",
+  "note": "Prompts frozen after one round of dev tuning. Do not change them before the test runs; a test fails if they change.",
+  "fingerprint": {
+    "text_only": "cf833aa33a09",
+    "context": "83b96d7a2c9d",
+    "context_cot": "82937d70cadb",
+    "task_alignment": "6be5291d9dc0",
+    "role_aware": "8d40dfb00a09",
+    "judge": "381e7bfb0ad2",
+    "assistant": "b7064229323a"
+  }
+}
