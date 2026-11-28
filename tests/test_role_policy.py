@@ -117,7 +117,7 @@ def test_combined_batch_reuses_model_call(tmp_path, monkeypatch):
     rve = result["roles_vs_endorsement"]
     assert {"all", "role_flip", "mixed_roles"} <= set(rve)
     assert rve["all"]["n"] == len(policy_preds)
-    assert set(result["by_dataset"]) == {"main", "role-policy-contrast"}
+    assert set(result["by_dataset"]) == {"main", "role-policy-contrast", "role-policy-contrast-explicit"}
     assert "## Three roles vs. yes/no endorsement" in report and "## By dataset" in report
     # With draft gold evidence, the endorsement rule also gets every contrast example right.
     assert result["policy_diagnostics"]["endorsement_policy"]["oracle_evidence"]["oracle_correct"] == len(contrast_test)
@@ -228,3 +228,14 @@ def test_expanded_contrast_groups():
         if rs[0]["contrast"] == "source_vs_planted":
             allow = [r for r in rs if r["label"] == "allow"][0]
             assert [s["injected"] for s in allow["policy_gold_spans"]] == [False]
+
+
+def test_explicit_marker_groups_are_kept_apart():
+    """The hand-written rpx-* groups use a visible synthetic marker; they are their own dataset."""
+    rows = load_jsonl(CONTRAST)
+    rpx = [r for r in rows if r["group_id"].startswith("rpx-")]
+    assert len(rpx) == 72 and {r["dataset"] for r in rpx} == {"role-policy-contrast-explicit"}
+    assert all(r["dataset"] == "role-policy-contrast" for r in rows if not r["group_id"].startswith("rpx-"))
+    # endorsement by reference: the adopting reply never restates the instruction
+    by_ref = [r for r in rpx if r["contrast"] == "mixed_roles" and r["label"] == "block"]
+    assert by_ref and all("I recommend doing that." in r["candidate_response"] for r in by_ref)

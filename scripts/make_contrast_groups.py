@@ -13,7 +13,7 @@ group right. All instructions are harmless, so harm can never decide a case.
 10 groups per type: 4 dev, 6 test. Dev and test use different planting styles (attack templates),
 so no template is shared across splits. Written without looking at any model's dev errors.
 
-    python scripts/make_contrast_groups.py            # rewrites the generated rows, keeps rp-d1..4 / rp-t1..4
+    python scripts/make_contrast_groups.py   # rewrites the generated rows; keeps rp-d1..4 / rp-t1..4 and rpx-*
 """
 from __future__ import annotations
 
@@ -224,7 +224,9 @@ def build():
 
 def main():
     kept = [json.loads(line) for line in OUT.read_text().splitlines() if line.strip()]
-    kept = [r for r in kept if r["group_id"] in KEEP]
+    # Keep the original 8 groups and every hand-written row (e.g. the rpx-* explicit-marker groups);
+    # replace only the rows this script generates (rp-d5.., rp-t5..).
+    kept = [r for r in kept if r["group_id"] in KEEP or not r["group_id"].startswith("rp-")]
     rows = kept + build()
     OUT.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
     print(f"wrote {len(rows)} rows ({len(kept)} kept, {len(rows) - len(kept)} generated) to {OUT}")
