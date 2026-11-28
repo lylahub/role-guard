@@ -93,9 +93,12 @@ def run_guard(llm: LLM, condition: str, ex: dict, response: str, fail_closed: bo
             span = {
                 "segment": sid if sid is not None else str(s.get("segment", "")),
                 "text": text,
+                "injected": s.get("injected"),
                 "user_authorized": s.get("user_authorized"),
                 "harmful_if_followed": s.get("harmful_if_followed"),
             }
+            if condition == "task_alignment":
+                span["endorsed"] = s.get("endorsed")
             if condition == "role_aware":
                 role = str(s.get("role", "")).lower().strip()
                 if role == "analysis":

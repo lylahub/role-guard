@@ -8,6 +8,8 @@ import argparse
 import json
 from pathlib import Path
 
+from .role_policy import POLICIES
+
 
 def _f(x, pct=True):
     if x is None:
@@ -74,16 +76,26 @@ def render_fixed(res: dict) -> str:
               f"- Role accuracy on matched spans: {_f(rm['role_accuracy_on_matched'])}",
               "- Confusion (gold→predicted): " + ", ".join(f"{k}: {v}" for k, v in rm["confusion"].items())]
     if abl := res.get("policy_ablation"):
-        def cell(k):
-            v = abl[k]["diff"]
-            return "–" if v is None else f"{'+' if v >= 0 else ''}{100 * v:.1f} pts{_ci(abl[k]['ci'])}"
-        L += ["", "## What the role label adds (role_aware_policy − task_alignment_policy)", "",
-              "Both are code rules over the same kind of cited evidence (authorization, harm). "
-              "task_alignment_policy has no role, so it treats every cited instruction as adopted.", "",
-              "| Δ miss rate | Δ FPR | Δ accuracy |", "|---|---|---|",
-              f"| {cell('attack_miss_rate')} | {cell('false_positive_rate')} | {cell('accuracy')} |"]
+        # Older results stored one role_aware_policy - task_alignment_policy comparison, unkeyed.
+        if "accuracy" in abl:
+            abl = {"role_aware_policy - task_alignment_policy": abl}
+        def cell(cmp, k):
+            v = cmp[k]["diff"]
+            return "–" if v is None else f"{'+' if v >= 0 else ''}{100 * v:.1f} pts{_ci(cmp[k]['ci'])}"
+        meaning = {"endorsement_policy - task_alignment_policy": "a yes/no endorsement",
+                   "role_aware_policy - endorsement_policy": "three roles over yes/no endorsement",
+                   "role_aware_policy - task_alignment_policy": "three roles over no usage information"}
+        L += ["", "## What usage information adds (policy ladder)", "",
+              "All three are code rules over the same kind of cited evidence (planted, authorized, harmful) "
+              "and block a planted unauthorized or a harmful instruction the response acts on. "
+              "task_alignment_policy counts every cited instruction as acted on; endorsement_policy only "
+              "those the response endorses; role_aware_policy only those with role \"adoption\".", "",
+              "| Comparison | Adds | Δ miss rate | Δ FPR | Δ accuracy |", "|---|---|---|---|---|"]
+        for name, cmp in abl.items():
+            L.append(f"| {name.replace(' - ', ' − ')} | {meaning.get(name, '')} | {cell(cmp, 'attack_miss_rate')} | "
+                     f"{cell(cmp, 'false_positive_rate')} | {cell(cmp, 'accuracy')} |")
     for policy_name, diag in _policy_diagnostics(res).items():
-        source = policy_name.removesuffix("_policy")
+        source = POLICIES[policy_name][0] if policy_name in POLICIES else policy_name.removesuffix("_policy")
         L += ["", f"## {policy_name} vs. {source} model decision", "",
               f"- Decisions changed: {diag['disagreements']}",
               f"- Errors fixed: {diag['policy_fixes']} · new errors: {diag['policy_regressions']}",
@@ -108,8 +120,10 @@ def render_fixed(res: dict) -> str:
                   "|---|---|---|---|---|"]
             L += [f"| {f} | {c['allow/allow']} | {c['allow/block']} | {c['block/allow']} | {c['block/block']} |"
                   for f, c in flags.items()]
-            L += ["", "`harmful_non_adoption`: a quoted or reported span the model marked harmful if followed. "
-                  "`model_policy_disagree`: the model's own verdict differs from the code policy."]
+            L += ["", "`task_deviation`: the response acts on the document's own (not planted), harmless "
+                  "instruction the user did not ask for; allowed, but counted. `harmful_non_adoption`: a quoted "
+                  "or reported span the model marked harmful if followed. `model_policy_disagree`: the model's "
+                  "own verdict differs from the code policy."]
     if slices := res.get("policy_slices"):
         L += ["", "## Policy contrast sets", "",
               "| Contrast | Guard | n | Miss rate | False-positive rate | Whole group correct |",

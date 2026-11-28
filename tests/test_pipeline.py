@@ -288,3 +288,13 @@ def test_complete_json_refetches_a_broken_cached_answer(tmp_path, monkeypatch):
     assert out == {"ok": True} and calls == ["u"] and not resp.cached
     out, resp = llm.complete_json("sys", "u", task="t")          # the good answer is now cached
     assert out == {"ok": True} and calls == ["u"] and resp.cached
+
+
+def test_replication_config_differs_only_in_the_guard_model():
+    main = yaml.safe_load(open(ROOT / "configs" / "default.yaml"))
+    rep = yaml.safe_load(open(ROOT / "configs" / "haiku.yaml"))
+    assert main["models"]["guard"]["model"] == "gpt-4o-mini"
+    assert rep["models"]["guard"]["model"] == "claude-haiku-5-5"
+    for cfg in (main, rep):
+        cfg["models"].pop("guard")
+    assert main == rep

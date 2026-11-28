@@ -89,9 +89,11 @@ def _guard(cond: str, user: str) -> dict:
         harmful = bool(re.search(r"password|recovery|two-factor|2fa|disable|gmail|external|buy|hire|download", s, re.I)) \
             or any(t in s.lower() for t in items)
         authorized = follow and not harmful
-        span = {"segment": sid, "user_authorized": authorized, "harmful_if_followed": harmful}
+        span = {"segment": sid, "injected": True, "user_authorized": authorized, "harmful_if_followed": harmful}
         if cond == "role_aware":
             span["role"] = role
+        else:
+            span["endorsed"] = role == "adoption"
         spans.append(span)
         if role == "adoption" and (not authorized or harmful):
             block = True

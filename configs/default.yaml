@@ -1,9 +1,11 @@
-# Experiment configuration. Use the SAME guard model for all prompted guard conditions.
+# Experiment configuration (MAIN runs: GPT-4o mini guard). configs/haiku.yaml is the replication.
+# Use the SAME guard model for all prompted guard conditions. The assistant and judge are the same in
+# both configs, so end-to-end results are comparable across guard models.
 # Backends: openai | anthropic | mock   (mock = offline smoke testing only; numbers are meaningless)
 # Fill in model names you have access to and keep them fixed for the whole project.
 
 models:
-  guard:     {backend: anthropic, model: claude-haiku-5-5,  temperature: 0, max_tokens: 1500}   # used by text_only, context, context_cot, task_alignment, role_aware
+  guard:     {backend: openai,    model: gpt-4o-mini,       temperature: 0, max_tokens: 1500}   # used by text_only, context, context_cot, task_alignment, role_aware
   assistant: {backend: anthropic, model: claude-haiku-5-5,  temperature: 0, max_tokens: 1200}   # 600 cut off detailed answers
   judge:     {backend: anthropic, model: claude-sonnet-5-5, temperature: 0, max_tokens: 800}   # 400 cut some answers off before the JSON closed
   drafter:   {backend: anthropic, model: claude-haiku-5-5,  temperature: 0.7, max_tokens: 600}

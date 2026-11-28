@@ -1,0 +1,24 @@
+# REPLICATION runs: Claude Haiku 5.5 guard (main runs use configs/default.yaml, GPT-4o mini).
+# Everything except the guard model must match configs/default.yaml. Haiku rejects temperature=0,
+# so its guard calls run at the model's default temperature; report that.
+# Backends: openai | anthropic | mock   (mock = offline smoke testing only; numbers are meaningless)
+# Fill in model names you have access to and keep them fixed for the whole project.
+
+models:
+  guard:     {backend: anthropic, model: claude-haiku-5-5,  temperature: 0, max_tokens: 1500}   # used by text_only, context, context_cot, task_alignment, role_aware
+  assistant: {backend: anthropic, model: claude-haiku-5-5,  temperature: 0, max_tokens: 1200}   # 600 cut off detailed answers
+  judge:     {backend: anthropic, model: claude-sonnet-5-5, temperature: 0, max_tokens: 800}   # 400 cut some answers off before the JSON closed
+  drafter:   {backend: anthropic, model: claude-haiku-5-5,  temperature: 0.7, max_tokens: 600}
+
+piguard:                    # off-the-shelf classifier baseline (pip install -e ".[piguard]")
+  model: leolee99/PIGuard
+  threshold: 0.5            # block if P(injection) >= threshold; risk score = 100 * P(injection)
+  window_tokens: 480        # classify overlapping windows of long texts, take the max (0 = plain truncation)
+  stride_tokens: 240
+
+concurrency: 4          # parallel API calls
+fail_closed: true       # unparseable guard output counts as "block" (and is reported)
+n_bootstrap: 1000       # group-bootstrap resamples for CIs
+target_fpr: 0.10        # operating point for "miss rate at matched FPR"
+cache_dir: .cache/llm   # every LLM call is cached here; delete to force fresh calls
+results_dir: results

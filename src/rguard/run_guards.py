@@ -23,7 +23,7 @@ from .llm import llm_from_config
 from .metrics import (bootstrap_ci, by_case_type, cost, detection, group_consistency, miss_at_fpr,
                       paired_difference_ci, role_metrics)
 from .report import render_fixed
-from .role_policy import FLAGS, POLICIES, REASON_CODES, apply_policy, decide
+from .role_policy import FLAGS, POLICIES, REASON_CODES, apply_policy, decide, policies_for
 
 
 def evaluate(preds_by_guard: dict[str, list[dict]], n_boot: int, target_fpr: float) -> dict:
@@ -54,19 +54,26 @@ def evaluate(preds_by_guard: dict[str, list[dict]], n_boot: int, target_fpr: flo
                     "ci": paired_difference_ci(preds_by_guard["role_aware"], preds_by_guard[b], detection, k, n_boot)}
     result = {"guards": out, "comparisons": comparisons}
     diagnostics = {}
-    for source, (name, _) in POLICIES.items():
+    for name, (source, _, _) in POLICIES.items():
         if name in preds_by_guard:
             diagnostics[name] = _policy_diagnostic(preds_by_guard[source], preds_by_guard[name])
     if diagnostics:
         result["policy_diagnostics"] = diagnostics
-    if {"role_aware_policy", "task_alignment_policy"} <= preds_by_guard.keys():
-        # Same kind of evidence and the same rule; the only difference is the role label.
-        a, b = preds_by_guard["role_aware_policy"], preds_by_guard["task_alignment_policy"]
-        result["policy_ablation"] = {
-            k: {"diff": None if detection(a)[k] is None or detection(b)[k] is None
-                else detection(a)[k] - detection(b)[k],
-                "ci": paired_difference_ci(a, b, detection, k, n_boot)}
-            for k in ("attack_miss_rate", "false_positive_rate", "accuracy")}
+    # The ladder: same rule, same kind of evidence; each step adds usage information.
+    ladder = [("endorsement_policy", "task_alignment_policy"),   # what a yes/no endorsement adds
+              ("role_aware_policy", "endorsement_policy"),       # what three roles add over it
+              ("role_aware_policy", "task_alignment_policy")]    # both together
+    ablation = {}
+    for hi, lo in ladder:
+        if {hi, lo} <= preds_by_guard.keys():
+            a, b = preds_by_guard[hi], preds_by_guard[lo]
+            ablation[f"{hi} - {lo}"] = {
+                k: {"diff": None if detection(a)[k] is None or detection(b)[k] is None
+                    else detection(a)[k] - detection(b)[k],
+                    "ci": paired_difference_ci(a, b, detection, k, n_boot)}
+                for k in ("attack_miss_rate", "false_positive_rate", "accuracy")}
+    if ablation:
+        result["policy_ablation"] = ablation
     return result
 
 
@@ -136,7 +143,7 @@ def main(argv=None):
 
     llm = llm_from_config(cfg, "guard", mock=a.mock)
     guards = [g.strip() for g in a.guards.split(",") if g.strip()]
-    if a.compare_role_policy and not POLICIES.keys() & set(guards):
+    if a.compare_role_policy and not any(policies_for(g) for g in guards):
         ap.error("--compare-role-policy requires role_aware and/or task_alignment in --guards")
     workers = 1 if llm.backend == "mock" else cfg.get("concurrency", 4)
 
@@ -151,23 +158,27 @@ def main(argv=None):
                       "dataset": ex.get("dataset", "main"), "contrast": ex.get("contrast"),
                       "variant": ex.get("variant")}
             model_pred = {**common, **r.to_dict()}
-            if g not in POLICIES or not a.compare_role_policy:
-                return model_pred, None
-            policy, reason_code, flags = apply_policy(r, ex["candidate_response"], cfg.get("fail_closed", True))
-            oracle = None
-            if "policy_gold_spans" in ex:
-                oracle, _ = decide(ex["policy_gold_spans"], ex["candidate_response"], POLICIES[g][1])
-            return model_pred, {**common, **policy.to_dict(), "gold_policy_decision": oracle,
+            if not a.compare_role_policy:
+                return model_pred, []
+            derived = []
+            for name in policies_for(g):   # each reuses this guard's call: no extra API cost
+                policy, reason_code, flags = apply_policy(r, ex["candidate_response"],
+                                                          cfg.get("fail_closed", True), name)
+                oracle = None
+                if "policy_gold_spans" in ex:
+                    oracle, _ = decide(ex["policy_gold_spans"], ex["candidate_response"], POLICIES[name][1])
+                derived.append({**common, **policy.to_dict(), "gold_policy_decision": oracle,
                                 "reason_code": reason_code, "flags": flags,
-                                "flagged_allow": policy.decision == "allow" and bool(flags)}
+                                "flagged_allow": policy.decision == "allow" and bool(flags)})
+            return model_pred, derived
         with ThreadPoolExecutor(max_workers=1 if g in CLASSIFIER_GUARDS else workers) as pool:
             batch = list(pool.map(one, rows))
         preds = [model for model, _ in batch]
         preds_by_guard[g] = preds
         all_preds += preds
-        if g in POLICIES and a.compare_role_policy:
-            policy_preds = [policy for _, policy in batch]
-            preds_by_guard[POLICIES[g][0]] = policy_preds
+        for i, name in enumerate(policies_for(g) if a.compare_role_policy else []):
+            policy_preds = [derived[i] for _, derived in batch]
+            preds_by_guard[name] = policy_preds
             all_preds += policy_preds
         d = detection(preds)
         print(f"{g:12s} miss={d['attack_miss_rate']}  fpr={d['false_positive_rate']}  acc={d['accuracy']}")
