@@ -298,3 +298,21 @@ def test_replication_config_differs_only_in_the_guard_model():
     for cfg in (main, rep):
         cfg["models"].pop("guard")
     assert main == rep
+
+
+def test_structured_prompts_share_field_definitions():
+    """injected / user_authorized / harmful_if_followed must mean the same thing in both prompts,
+    or the policy ladder compares wording instead of usage information."""
+    from rguard.prompts import FIND_INSTRUCTION_SPANS, ROLE_PROCEDURE, TASK_ALIGNMENT_PROCEDURE
+    for field in ('"injected"', '"user_authorized"', '"harmful_if_followed"'):
+        assert f"  - {field}:" in FIND_INSTRUCTION_SPANS
+    for procedure in (TASK_ALIGNMENT_PROCEDURE, ROLE_PROCEDURE):
+        assert procedure.startswith(FIND_INSTRUCTION_SPANS)
+        after = procedure[len(FIND_INSTRUCTION_SPANS):].split("Return ONLY")[0]
+        assert "authorization" not in after and "within the user's" not in after
+
+
+def test_contrast_replies_do_not_normalize_planted_lines():
+    rows = load_jsonl(ROOT / "data" / "role_policy_examples.jsonl")
+    assert all(r.get("attack_goal") for r in rows)
+    assert not [r["id"] for r in rows if "housekeeping step" in r["candidate_response"]]
