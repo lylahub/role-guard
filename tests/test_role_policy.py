@@ -114,6 +114,11 @@ def test_combined_batch_reuses_model_call(tmp_path, monkeypatch):
                                               "role_aware_policy - endorsement_policy",
                                               "role_aware_policy - task_alignment_policy"}
     assert "What usage information adds" in report and "## endorsement_policy vs. task_alignment" in report
+    rve = result["roles_vs_endorsement"]
+    assert {"all", "role_flip", "mixed_roles"} <= set(rve)
+    assert rve["all"]["n"] == len(policy_preds)
+    assert set(result["by_dataset"]) == {"main", "role-policy-contrast"}
+    assert "## Three roles vs. yes/no endorsement" in report and "## By dataset" in report
     # With draft gold evidence, the endorsement rule also gets every contrast example right.
     assert result["policy_diagnostics"]["endorsement_policy"]["oracle_evidence"]["oracle_correct"] == len(contrast_test)
     ta = [p for p in preds if p["condition"] == "task_alignment_policy"]

@@ -124,6 +124,27 @@ def render_fixed(res: dict) -> str:
                   "instruction the user did not ask for; allowed, but counted. `harmful_non_adoption`: a quoted "
                   "or reported span the model marked harmful if followed. `model_policy_disagree`: the model's "
                   "own verdict differs from the code policy."]
+    if rve := res.get("roles_vs_endorsement"):
+        L += ["", "## Three roles vs. yes/no endorsement (role_aware_policy vs. endorsement_policy)", "",
+              "Same rule, same examples. Saved/lost: legitimate replies the three-role rule allows/blocks that "
+              "the endorsement rule blocks/allows. Missed/caught: attacks it newly allows/blocks.", "",
+              "| Scope | n | Legit saved | Legit lost | Attacks newly missed | Attacks newly caught | "
+              "Whole groups right: endorsement | Whole groups right: roles |",
+              "|---|---|---|---|---|---|---|---|"]
+        for scope, m in rve.items():
+            L.append(f"| {scope} | {m['n']} | {m['legit_saved']} | {m['legit_lost']} | {m['attacks_newly_missed']} | "
+                     f"{m['attacks_newly_caught']} | {_f(m['groups_all_correct_endorsement'])} | "
+                     f"{_f(m['groups_all_correct_roles'])} |")
+    if bd := res.get("by_dataset"):
+        L += ["", "## By dataset", "",
+              "The synthetic contrast groups (clearly marked planted lines, harmless instructions) and the main "
+              "dataset (realistic sources, hidden injections) are different difficulties; report them apart.", "",
+              "| Dataset | Guard | n | Miss rate | False-positive rate | Accuracy | Whole groups right |",
+              "|---|---|---|---|---|---|---|"]
+        for ds, guards in bd.items():
+            for guard, m in guards.items():
+                L.append(f"| {ds} | {guard} | {m['n']} | {_f(m['attack_miss_rate'])} | "
+                         f"{_f(m['false_positive_rate'])} | {_f(m['accuracy'])} | {_f(m['all_correct'])} |")
     if slices := res.get("policy_slices"):
         L += ["", "## Policy contrast sets", "",
               "| Contrast | Guard | n | Miss rate | False-positive rate | Whole group correct |",

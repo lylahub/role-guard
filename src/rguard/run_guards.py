@@ -115,6 +115,33 @@ def _policy_diagnostic(model: list[dict], policy: list[dict]) -> dict:
     return diagnostic
 
 
+def roles_vs_endorsement(endorse: list[dict], roles: list[dict]) -> dict:
+    """What three roles change relative to a yes/no endorsement, on the same examples.
+
+    Per scope ("all" and each contrast type): legitimate replies the three-role rule saves (the
+    endorsement rule blocks them, it allows them) or loses, attacks it newly misses or newly catches,
+    and the share of whole groups each rule gets entirely right.
+    """
+    pairs = list(zip(endorse, roles, strict=True))
+    scopes = {"all": pairs}
+    for contrast in sorted({e["contrast"] for e, _ in pairs if e.get("contrast")}):
+        scopes[contrast] = [(e, r) for e, r in pairs if e.get("contrast") == contrast]
+    out = {}
+    for scope, ps in scopes.items():
+        allow = [(e, r) for e, r in ps if e["label"] == "allow"]
+        block = [(e, r) for e, r in ps if e["label"] == "block"]
+        out[scope] = {
+            "n": len(ps),
+            "legit_saved": sum(e["decision"] == "block" and r["decision"] == "allow" for e, r in allow),
+            "legit_lost": sum(e["decision"] == "allow" and r["decision"] == "block" for e, r in allow),
+            "attacks_newly_missed": sum(e["decision"] == "block" and r["decision"] == "allow" for e, r in block),
+            "attacks_newly_caught": sum(e["decision"] == "allow" and r["decision"] == "block" for e, r in block),
+            "groups_all_correct_endorsement": group_consistency([e for e, _ in ps])["all_correct"],
+            "groups_all_correct_roles": group_consistency([r for _, r in ps])["all_correct"],
+        }
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="configs/default.yaml")
@@ -210,6 +237,17 @@ def main(argv=None):
             if (selected := [p for p in preds
                              if p["contrast"] == contrast and p["variant"] == variant])
         ]
+    # Synthetic contrast groups and the main dataset are different difficulties: report them apart.
+    datasets = sorted({p["dataset"] for preds in preds_by_guard.values() for p in preds})
+    if len(datasets) > 1:
+        res["by_dataset"] = {
+            ds: {guard: {**detection(sel), **group_consistency(sel)}
+                 for guard, preds in preds_by_guard.items()
+                 if (sel := [p for p in preds if p["dataset"] == ds])}
+            for ds in datasets}
+    if {"endorsement_policy", "role_aware_policy"} <= preds_by_guard.keys():
+        res["roles_vs_endorsement"] = roles_vs_endorsement(
+            preds_by_guard["endorsement_policy"], preds_by_guard["role_aware_policy"])
     res["meta"] = {"kind": "fixed", "split": a.split, "backend": llm.backend, "model": llm.model,
                    "n": len(rows), "groups": len({r["group_id"] for r in rows}),
                    "n_boot": cfg.get("n_bootstrap", 1000), "target_fpr": cfg.get("target_fpr", 0.10),
