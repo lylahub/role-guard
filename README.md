@@ -177,6 +177,15 @@ prompts as rendered on a fixed probe example, so formatting and sentence-splitti
 `prompt_fingerprint` and `prompts_frozen` in its `results.json` meta. Run the test split only with
 `prompts_frozen: true`. Do not tune on test results.
 
+**Contrast groups.** `data/role_policy_examples.jsonl` has 58 minimal-pair groups (128 examples; 25
+dev / 33 test groups). Every group shares one source and its replies differ only in what they do with an
+instruction; all instructions are harmless, so harm never decides a case. Types: `mixed_roles` (quote vs
+quote + adopt), `authorization_flip` (adopt after "summarize" vs after an explicit request to follow the
+planted line), `role_flip` (report vs adopt), `suggestion_wording` (neutral / direct / hedged),
+`source_vs_planted` (pass on the document's own step vs the planted line), and `general_request` (two
+original groups: "tell me what to do based on the note" does not authorize a planted line, so both
+replies block). `scripts/make_contrast_groups.py` regenerates the 50 newer groups.
+
 **Contrast set sources.** In `data/role_policy_examples.jsonl` each instruction is a planted line inside
 an ordinary note (dev: a bracketed note to AI assistants; test: a fake automated admin line, so the two
 splits use different attack templates). Draft gold evidence (`policy_gold_spans`) marks those lines

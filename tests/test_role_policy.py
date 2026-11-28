@@ -86,14 +86,18 @@ def test_combined_batch_reuses_model_call(tmp_path, monkeypatch):
     assert set(result["guards"]) == {"task_alignment", "task_alignment_policy", "endorsement_policy",
                                      "role_aware", "role_aware_policy"}
     assert "task_alignment" in result["comparisons"]
+    contrast_test = [r for r in load_jsonl(CONTRAST) if r["split"] == "test"]
     oracle = result["policy_diagnostics"]["role_aware_policy"]["oracle_evidence"]
-    assert oracle["oracle_correct"] == oracle["n"] == 9
+    # Draft gold evidence decides every contrast example correctly under the role-aware rule.
+    assert oracle["oracle_correct"] == oracle["n"] == len(contrast_test)
     assert set(result["policy_slices"]) == {
-        "mixed_roles", "authorization_flip", "role_flip", "suggestion_wording",
+        "mixed_roles", "authorization_flip", "role_flip", "suggestion_wording", "source_vs_planted",
+        "general_request",
     }
+    n_wording_groups = len({r["group_id"] for r in contrast_test if r["contrast"] == "suggestion_wording"})
     variants = result["policy_variants"]
     assert {(m["variant"], m["guard"], m["n"]) for m in variants} == {
-        (variant, guard, 1)
+        (variant, guard, n_wording_groups)
         for variant in ("neutral_report", "direct_recommendation", "hedged_recommendation")
         for guard in result["guards"]
     }
@@ -111,7 +115,7 @@ def test_combined_batch_reuses_model_call(tmp_path, monkeypatch):
                                               "role_aware_policy - task_alignment_policy"}
     assert "What usage information adds" in report and "## endorsement_policy vs. task_alignment" in report
     # With draft gold evidence, the endorsement rule also gets every contrast example right.
-    assert result["policy_diagnostics"]["endorsement_policy"]["oracle_evidence"]["oracle_correct"] == 9
+    assert result["policy_diagnostics"]["endorsement_policy"]["oracle_evidence"]["oracle_correct"] == len(contrast_test)
     ta = [p for p in preds if p["condition"] == "task_alignment_policy"]
     assert len(ta) == len(policy_preds) and all(p["reason_code"] != "malformed_span" for p in ta)
 
@@ -195,3 +199,27 @@ def test_report_renders_old_flat_policy_diagnostics(tmp_path):
     res = json.loads((tmp_path / "old" / "results.json").read_text())
     res["policy_diagnostics"] = res["policy_diagnostics"]["role_aware_policy"]   # old flat format
     assert "## role_aware_policy vs. role_aware model decision" in render_fixed(res)
+
+
+def test_expanded_contrast_groups():
+    """The generated groups: at least 10 per type, minimal pairs on one source, no split leakage."""
+    from collections import defaultdict
+    rows = load_jsonl(CONTRAST)
+    groups = defaultdict(list)
+    for r in rows:
+        groups[r["group_id"]].append(r)
+    per_type = defaultdict(int)
+    for gid, rs in groups.items():
+        assert len({r["source_content"] for r in rs}) == 1 and len({r["split"] for r in rs}) == 1
+        assert {r["label"] for r in rs} == {"allow", "block"} or rs[0]["contrast"] == "general_request", gid
+        per_type[rs[0]["contrast"]] += 1
+        for r in rs:
+            for s in r["policy_gold_spans"]:
+                assert s["text"] in r["candidate_response"] and s["harmful_if_followed"] is False
+    for contrast in ("mixed_roles", "authorization_flip", "role_flip", "suggestion_wording", "source_vs_planted"):
+        assert per_type[contrast] >= 10, (contrast, per_type[contrast])
+    # source_vs_planted: the allowed reply passes on the document's own (not injected) instruction
+    for gid, rs in groups.items():
+        if rs[0]["contrast"] == "source_vs_planted":
+            allow = [r for r in rs if r["label"] == "allow"][0]
+            assert [s["injected"] for s in allow["policy_gold_spans"]] == [False]
