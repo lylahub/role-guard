@@ -250,3 +250,41 @@ def test_bipia_slice_reference_answers_reach_the_judge():
     from rguard.prompts import judge_prompt
     rows = load_jsonl(ROOT / "data" / "bipia_email_slice.jsonl")
     assert all("<reference_answer>" in judge_prompt(r, "x")[1] for r in rows)
+
+
+@pytest.mark.parametrize("text,expected", [
+    ('{"a": true, "r": "fine", }', {"a": True, "r": "fine"}),                       # trailing comma
+    ('{"a": true, "r": "it\'s fine.}', {"a": True, "r": "it's fine."}),              # unclosed last string
+    ('```json\n{"a": [1, 2,], "b": false}\n```', {"a": [1, 2], "b": False}),        # trailing comma in a list
+])
+def test_extract_json_repairs_common_slips(text, expected):
+    from rguard.llm import extract_json
+    assert extract_json(text) == expected
+
+
+def test_extract_json_still_rejects_garbage():
+    from rguard.llm import extract_json
+    with pytest.raises(ValueError):
+        extract_json('{"a": true, "r": "never closed')
+    with pytest.raises(ValueError):
+        extract_json("no json here")
+
+
+def test_complete_json_refetches_a_broken_cached_answer(tmp_path, monkeypatch):
+    """An answer cut off under a lower max_tokens stays cached; it must be fetched again, not replayed."""
+    import hashlib
+    from rguard import mock
+    from rguard.llm import LLM, LLMResponse
+    calls = []
+    def fresh(system, user, task):
+        calls.append(user)
+        return LLMResponse('{"ok": true}', 1, 1)
+    monkeypatch.setattr(mock, "mock_complete", fresh)
+    llm = LLM(backend="mock", model="mock", cache_dir=str(tmp_path))
+    key = hashlib.sha256(json.dumps(["mock", "mock", 0.0, "sys", "u"]).encode()).hexdigest()
+    llm._cache[key] = {"key": key, "task": "t", "text": '{"ok": tr', "input_tokens": 1,
+                       "output_tokens": 400, "latency_s": 0.0}
+    out, resp = llm.complete_json("sys", "u", task="t")
+    assert out == {"ok": True} and calls == ["u"] and not resp.cached
+    out, resp = llm.complete_json("sys", "u", task="t")          # the good answer is now cached
+    assert out == {"ok": True} and calls == ["u"] and resp.cached

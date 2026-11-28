@@ -58,8 +58,27 @@ def extract_json(text: str) -> dict:
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return json.loads(text[start : i + 1])
+                return _loads_repaired(text[start : i + 1])
+    # A common model slip: the last string value is never closed, so its closing brace sits
+    # inside the string ('..."rationale": "text}'). Close the string and retry.
+    tail = text[start:].rstrip()
+    if in_str and tail.endswith("}"):
+        try:
+            return _loads_repaired(tail[:-1] + '"}')
+        except json.JSONDecodeError:
+            pass
     raise ValueError(f"Unbalanced JSON in model output: {text[:200]!r}")
+
+
+def _loads_repaired(candidate: str) -> dict:
+    """json.loads, retrying once with trailing commas removed ('"x": 1, }' -> '"x": 1 }')."""
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        fixed = re.sub(r",\s*([}\]])", r"\1", candidate)
+        if fixed == candidate:
+            raise
+        return json.loads(fixed)
 
 
 class LLM:
@@ -85,11 +104,13 @@ class LLM:
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ public
-    def complete(self, system: str, user: str, task: str = "generic", json_mode: bool = True) -> LLMResponse:
+    def complete(self, system: str, user: str, task: str = "generic", json_mode: bool = True,
+                 refresh: bool = False) -> LLMResponse:
+        """refresh=True skips the cache and overwrites the cached answer with a fresh one."""
         key = hashlib.sha256(
             json.dumps([self.backend, self.model, self.temperature, system, user]).encode()
         ).hexdigest()
-        if key in self._cache:
+        if key in self._cache and not refresh:
             r = self._cache[key]
             return LLMResponse(r["text"], r["input_tokens"], r["output_tokens"], r["latency_s"], cached=True)
 
@@ -126,17 +147,33 @@ class LLM:
         return resp
 
     def complete_json(self, system: str, user: str, task: str = "generic") -> tuple[dict, LLMResponse]:
-        """Call the model and parse JSON; on a parse failure, ask once more with a stricter reminder."""
-        resp = self.complete(system, user, task=task)
-        try:
-            return extract_json(resp.text), resp
-        except (ValueError, json.JSONDecodeError):
-            retry_user = user + "\n\nReturn ONLY one valid JSON object matching the schema. No other text."
-            resp2 = self.complete(system, retry_user, task=task)
-            resp2.input_tokens += resp.input_tokens
-            resp2.output_tokens += resp.output_tokens
-            resp2.latency_s += resp.latency_s
-            return extract_json(resp2.text), resp2
+        """Call the model and parse JSON; on a parse failure, ask once more with a stricter reminder.
+
+        The cache key ignores max_tokens, so an answer cut off under a lower limit (or otherwise
+        broken) stays cached. A cached answer that does not parse is fetched again instead of replayed.
+        """
+        prompts = [user, user + "\n\nReturn ONLY one valid JSON object matching the schema. No other text."]
+        spent = LLMResponse("")
+        err: Exception | None = None
+        for prompt in prompts:
+            resp = self.complete(system, prompt, task=task)
+            tries = [resp]
+            if resp.cached:
+                tries.append(None)   # placeholder: refetch only if the cached answer fails to parse
+            for i, r in enumerate(tries):
+                if r is None:
+                    r = self.complete(system, prompt, task=task, refresh=True)
+                spent.input_tokens += r.input_tokens
+                spent.output_tokens += r.output_tokens
+                spent.latency_s += r.latency_s
+                try:
+                    out = extract_json(r.text)
+                except (ValueError, json.JSONDecodeError) as e:
+                    err = e
+                    continue
+                r.input_tokens, r.output_tokens, r.latency_s = spent.input_tokens, spent.output_tokens, spent.latency_s
+                return out, r
+        raise err
 
     # --------------------------------------------------------------- backends
     def _openai(self, system: str, user: str, json_mode: bool) -> LLMResponse:
